@@ -39,9 +39,11 @@ public sealed class DashboardTests(PostgresFixture postgres)
         AssertMetric(html, "open-opportunities", 5);
         AssertMetric(html, "proposals-due", 2);
         AssertMetric(html, "scheduled-work", 2);
-        AssertMetric(html, "work-in-progress", 2);
+        AssertMetric(html, "work-in-progress", 3);
         AssertMetric(html, "overdue-work", 2);
         AssertMetric(html, "completions-this-month", 2);
+        Assert.Contains("2026-08-12 21:00 JST", html, StringComparison.Ordinal);
+        Assert.Contains("Asia/Tokyo", html, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -52,9 +54,9 @@ public sealed class DashboardTests(PostgresFixture postgres)
         await SeedMetricDefinitionsAsync(application);
         (string Role, int[] Metrics)[] cases =
         [
-            (DemoRoleNames.SystemAdministrator, [5, 2, 2, 2, 2, 2]),
-            (DemoRoleNames.BranchManager, [4, 2, 1, 1, 1, 1]),
-            (DemoRoleNames.SalesRepresentative, [2, 1, 1, 0, 1, 1]),
+            (DemoRoleNames.SystemAdministrator, [5, 2, 2, 3, 2, 2]),
+            (DemoRoleNames.BranchManager, [4, 2, 1, 2, 1, 1]),
+            (DemoRoleNames.SalesRepresentative, [4, 2, 1, 2, 1, 1]),
             (DemoRoleNames.FieldTechnician, [1, 0, 1, 1, 1, 1])
         ];
         string[] metricNames =
@@ -111,7 +113,14 @@ public sealed class DashboardTests(PostgresFixture postgres)
         Assert.Contains("Fictional Field Service Branch", comparison, StringComparison.Ordinal);
         Assert.Contains($"data-branch-id=\"{seed.CentralBranchId}\" data-open-opportunities=\"4\"", comparison, StringComparison.Ordinal);
         Assert.Contains($"data-branch-id=\"{seed.FieldBranchId}\" data-open-opportunities=\"1\"", comparison, StringComparison.Ordinal);
+        Assert.Contains("Scheduled work", comparison, StringComparison.Ordinal);
+        Assert.Contains("Work in progress", comparison, StringComparison.Ordinal);
+        Assert.Contains("Overdue work", comparison, StringComparison.Ordinal);
+        Assert.Contains("Completions this month", comparison, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, (await administrator.GetAsync($"/branches/{seed.FieldBranchId}")).StatusCode);
+        string administratorDetails = await administrator.GetStringAsync($"/branches/{seed.CentralBranchId}");
+        Assert.Contains("2026-08-12 21:00 JST", administratorDetails, StringComparison.Ordinal);
+        Assert.Contains("Asia/Tokyo", administratorDetails, StringComparison.Ordinal);
 
         using HttpClient manager = CreateClient(application);
         await LoginAsAsync(manager, DemoRoleNames.BranchManager);
@@ -153,7 +162,16 @@ public sealed class DashboardTests(PostgresFixture postgres)
         Assert.Contains("Jordan Lee", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
         Assert.DoesNotContain(audit.ManagerUserId, firstPage + secondPage + boundedPage, StringComparison.Ordinal);
         Assert.DoesNotContain("ultra-secret-value", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("Alpha123", boundedPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret_value", boundedPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("秘密情報", boundedPage, StringComparison.Ordinal);
         Assert.Contains("Details withheld", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
+        Assert.Contains("OwnerUserId, Status", boundedPage, StringComparison.Ordinal);
+        Assert.Contains("2026-08-12 19:00 JST", boundedPage, StringComparison.Ordinal);
+        Assert.Contains("Asia/Tokyo", boundedPage, StringComparison.Ordinal);
+        using HttpResponseMessage extremePage = await administrator.GetAsync(
+            "/audit?page=999999999999999999999&pageSize=100");
+        Assert.Equal(HttpStatusCode.BadRequest, extremePage.StatusCode);
 
         using HttpClient manager = CreateClient(application);
         await LoginAsAsync(manager, DemoRoleNames.BranchManager);
@@ -237,18 +255,55 @@ public sealed class DashboardTests(PostgresFixture postgres)
             await LoginAsAsync(client, DemoRoleNames.SystemAdministrator);
             counter.Reset();
 
-            using HttpResponseMessage response = await client.GetAsync("/");
-
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using (HttpResponseMessage response = await client.GetAsync("/"))
+            {
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            }
             Assert.Equal(2, counter.CommandCount);
             Assert.InRange(counter.CommandCount, 1, 8);
+            Assert.Equal(
+                new DatabaseSessionCounts(0, 0, 0),
+                await CountOtherDatabaseSessionsAsync(connectionString));
+
+            for (int request = 0; request < 3; request++)
+            {
+                using HttpResponseMessage repeatedResponse = await client.GetAsync("/");
+                Assert.Equal(HttpStatusCode.OK, repeatedResponse.StatusCode);
+            }
+
+            Assert.Equal(
+                new DatabaseSessionCounts(0, 0, 0),
+                await CountOtherDatabaseSessionsAsync(connectionString));
         }
         finally
         {
             await application.DisposeAsync();
         }
 
-        Assert.Equal(0, await CountOtherDatabaseConnectionsAsync(connectionString));
+        Assert.Equal(
+            new DatabaseSessionCounts(0, 0, 0),
+            await CountOtherDatabaseSessionsAsync(connectionString));
+    }
+
+    [Fact]
+    public async Task AuditPagingIndexesMatchStableGlobalAndBranchOrdering()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString);
+        _ = application.Services;
+
+        IReadOnlyDictionary<string, string> indexes = await ReadAuditIndexesAsync(connectionString);
+
+        Assert.Contains("IX_AuditEntries_OccurredAtUtc_Id", indexes.Keys);
+        Assert.Contains(
+            "\"OccurredAtUtc\" DESC, \"Id\" DESC",
+            indexes["IX_AuditEntries_OccurredAtUtc_Id"],
+            StringComparison.Ordinal);
+        Assert.Contains("IX_AuditEntries_BranchId_OccurredAtUtc_Id", indexes.Keys);
+        Assert.Contains(
+            "\"BranchId\", \"OccurredAtUtc\" DESC, \"Id\" DESC",
+            indexes["IX_AuditEntries_BranchId_OccurredAtUtc_Id"],
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -281,6 +336,44 @@ public sealed class DashboardTests(PostgresFixture postgres)
         using HttpResponseMessage dashboardAfterLogout = await client.GetAsync("/");
         Assert.Equal(HttpStatusCode.Redirect, dashboardAfterLogout.StatusCode);
         Assert.Equal("/demo-login", dashboardAfterLogout.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task PartyNavigationHrefsResolveToFinalScopedPagesForEveryAuthorizedRole()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString);
+        await SeedNavigationPartiesAsync(application);
+
+        foreach (string role in new[]
+        {
+            DemoRoleNames.SystemAdministrator,
+            DemoRoleNames.BranchManager,
+            DemoRoleNames.SalesRepresentative
+        })
+        {
+            using HttpClient client = CreateClient(application);
+            await LoginAsAsync(client, role);
+            string dashboard = await client.GetStringAsync("/");
+
+            string customerHref = ExtractNavigationHref(dashboard, "customers");
+            (HttpStatusCode CustomerStatus, string CustomerHtml) = await GetFinalResponseAsync(client, customerHref);
+            Assert.Equal(HttpStatusCode.OK, CustomerStatus);
+            Assert.Contains("Fictional Central Nav Customer", CustomerHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("Fictional Field Nav Customer", CustomerHtml, StringComparison.Ordinal);
+
+            string partnerHref = ExtractNavigationHref(dashboard, "business-partners");
+            (HttpStatusCode PartnerStatus, string PartnerHtml) = await GetFinalResponseAsync(client, partnerHref);
+            Assert.Equal(HttpStatusCode.OK, PartnerStatus);
+            Assert.Contains("Fictional Central Nav Partner", PartnerHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("Fictional Field Nav Partner", PartnerHtml, StringComparison.Ordinal);
+        }
+
+        using HttpClient technician = CreateClient(application);
+        await LoginAsAsync(technician, DemoRoleNames.FieldTechnician);
+        string technicianDashboard = await technician.GetStringAsync("/");
+        Assert.DoesNotContain("data-nav=\"customers\"", technicianDashboard, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-nav=\"business-partners\"", technicianDashboard, StringComparison.Ordinal);
     }
 
     private static FieldOpsWebApplicationFactory CreateApplication(
@@ -334,6 +427,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         dueToday.AssignOwner(salesUser.Id);
         SalesOpportunity dueTomorrow = CreateProposed(field, fieldParty, FixedUtcNow.Date.AddDays(1));
         dueTomorrow.AssignToUser(technician.Id);
+        dueTomorrow.AssignOwner(salesUser.Id);
         SalesOpportunity lost = SalesOpportunity.Create(central, centralParty, centralParty.Sites.Single());
         lost.MoveTo(SalesOpportunityStatus.Lost, FixedUtcNow.AddDays(-1));
 
@@ -341,6 +435,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         GetTrackedOpportunity(db, scheduledOverdue).AssignOwner(salesUser.Id);
         scheduledOverdue.Schedule(FixedUtcNow.AddHours(-1), FixedUtcNow.AddDays(-1));
         WorkOrder scheduledFuture = CreateWork(db, field, fieldParty);
+        GetTrackedOpportunity(db, scheduledFuture).AssignOwner(salesUser.Id);
         scheduledFuture.Schedule(FixedUtcNow.AddHours(1), FixedUtcNow.AddDays(-1));
         scheduledFuture.AssignToUser(technician.Id);
         WorkOrder inProgressOverdue = CreateWork(db, field, fieldParty);
@@ -350,9 +445,18 @@ public sealed class DashboardTests(PostgresFixture postgres)
         WorkOrder inProgressFuture = CreateWork(db, central, centralParty);
         inProgressFuture.Schedule(FixedUtcNow.AddHours(2), FixedUtcNow.AddDays(-1));
         inProgressFuture.MoveTo(WorkOrderStatus.InProgress, FixedUtcNow.AddHours(-1));
+        WorkOrder inProgressWithCompletionEvent = CreateWork(db, central, centralParty);
+        inProgressWithCompletionEvent.Schedule(FixedUtcNow.AddHours(3), FixedUtcNow.AddDays(-1));
+        inProgressWithCompletionEvent.MoveTo(WorkOrderStatus.InProgress, FixedUtcNow.AddHours(-1));
+        inProgressWithCompletionEvent.AddEvent(
+            WorkEventType.Completion,
+            FixedUtcNow.AddMinutes(-5),
+            "Fictional completion event before final transition",
+            "fictional.actor");
         WorkOrder completedAtMonthStart = CreateCompletedWork(db, central, centralParty, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc));
         GetTrackedOpportunity(db, completedAtMonthStart).AssignOwner(salesUser.Id);
         WorkOrder completedNow = CreateCompletedWork(db, field, fieldParty, FixedUtcNow);
+        GetTrackedOpportunity(db, completedNow).AssignOwner(salesUser.Id);
         completedNow.AssignToUser(technician.Id);
         WorkOrder completedBeforeMonth = CreateCompletedWork(db, central, centralParty, new DateTime(2026, 7, 31, 23, 59, 59, DateTimeKind.Utc));
         WorkOrder completedAtNextMonthStart = CreateCompletedWork(db, central, centralParty, new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
@@ -360,7 +464,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         db.AddRange(
             centralParty, fieldParty,
             openNew, onHold, duePast, dueToday, dueTomorrow, lost,
-            scheduledOverdue, scheduledFuture, inProgressOverdue, inProgressFuture,
+            scheduledOverdue, scheduledFuture, inProgressOverdue, inProgressFuture, inProgressWithCompletionEvent,
             completedAtMonthStart, completedNow, completedBeforeMonth, completedAtNextMonthStart);
         await db.SaveChangesAsync();
         return new DashboardSeed(central.Id, field.Id);
@@ -421,9 +525,40 @@ public sealed class DashboardTests(PostgresFixture postgres)
             new AuditEntry("Party", Guid.NewGuid(), seed.CentralBranchId, "CentralAuditTwo", "Success", "ultra-secret-value", occurredAtUtc, manager.Id),
             new AuditEntry("WorkOrder", Guid.NewGuid(), seed.CentralBranchId, "CentralAuditThree", "Success", "Status", occurredAtUtc.AddMinutes(-1), manager.Id),
             new AuditEntry("WorkOrder", Guid.NewGuid(), seed.FieldBranchId, "FieldAuditOne", "Success", "Status", occurredAtUtc.AddMinutes(-2), manager.Id),
-            new AuditEntry("SalesOpportunity", Guid.NewGuid(), seed.FieldBranchId, "FieldAuditTwo", "Success", "OwnerUserId", occurredAtUtc.AddMinutes(-3), manager.Id));
+            new AuditEntry("SalesOpportunity", Guid.NewGuid(), seed.FieldBranchId, "FieldAuditTwo", "Success", "OwnerUserId", occurredAtUtc.AddMinutes(-3), manager.Id),
+            new AuditEntry("Party", Guid.NewGuid(), seed.CentralBranchId, "CentralAuditIdentifierSecret", "Success", "Alpha123", occurredAtUtc.AddMinutes(-4), manager.Id),
+            new AuditEntry("Party", Guid.NewGuid(), seed.CentralBranchId, "CentralAuditUnderscoreSecret", "Success", "secret_value", occurredAtUtc.AddMinutes(-5), manager.Id),
+            new AuditEntry("Party", Guid.NewGuid(), seed.CentralBranchId, "CentralAuditUnicodeSecret", "Success", "秘密情報", occurredAtUtc.AddMinutes(-6), manager.Id),
+            new AuditEntry("WorkOrder", Guid.NewGuid(), seed.CentralBranchId, "CentralAuditApprovedFields", "Success", "OwnerUserId,Status", occurredAtUtc.AddMinutes(-7), manager.Id));
         await db.SaveChangesAsync();
         return new AuditSeed(manager.Id);
+    }
+
+    private static async Task SeedNavigationPartiesAsync(FieldOpsWebApplicationFactory application)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext db = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Branch central = await db.Branches.SingleAsync(branch => branch.Name == "Fictional Central Service Branch");
+        Branch field = await db.Branches.SingleAsync(branch => branch.Name == "Fictional Field Service Branch");
+        Party centralCustomer = CreateParty(central, "Fictional Central Nav Customer");
+        centralCustomer.AddRole(PartyRoleType.Customer);
+        Party fieldCustomer = CreateParty(field, "Fictional Field Nav Customer");
+        fieldCustomer.AddRole(PartyRoleType.Customer);
+        Party centralPartner = CreateParty(central, "Fictional Central Nav Partner");
+        centralPartner.AddRole(PartyRoleType.BusinessPartner);
+        Party fieldPartner = CreateParty(field, "Fictional Field Nav Partner");
+        fieldPartner.AddRole(PartyRoleType.BusinessPartner);
+        db.Parties.AddRange(centralCustomer, fieldCustomer, centralPartner, fieldPartner);
+        await db.SaveChangesAsync();
+    }
+
+    private static string ExtractNavigationHref(string html, string nav)
+    {
+        string href = Regex.Match(
+            html,
+            $"<a data-nav=\"{Regex.Escape(nav)}\"[^>]*href=\"([^\"]+)\"").Groups[1].Value;
+        Assert.NotEmpty(href);
+        return System.Net.WebUtility.HtmlDecode(href);
     }
 
     private static string[] ExtractAuditActions(string html) =>
@@ -444,7 +579,27 @@ public sealed class DashboardTests(PostgresFixture postgres)
         return await client.GetStringAsync(response.Headers.Location);
     }
 
-    private static async Task<int> CountOtherDatabaseConnectionsAsync(string connectionString)
+    private static async Task<(HttpStatusCode StatusCode, string Html)> GetFinalResponseAsync(
+        HttpClient client,
+        string path)
+    {
+        string currentPath = path;
+        for (int redirect = 0; redirect < 5; redirect++)
+        {
+            using HttpResponseMessage response = await client.GetAsync(currentPath);
+            if (response.StatusCode != HttpStatusCode.Redirect)
+            {
+                return (response.StatusCode, await response.Content.ReadAsStringAsync());
+            }
+
+            Assert.NotNull(response.Headers.Location);
+            currentPath = response.Headers.Location.OriginalString;
+        }
+
+        throw new InvalidOperationException("Navigation exceeded the redirect limit.");
+    }
+
+    private static async Task<DatabaseSessionCounts> CountOtherDatabaseSessionsAsync(string connectionString)
     {
         string nonPooledConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
         {
@@ -454,12 +609,44 @@ public sealed class DashboardTests(PostgresFixture postgres)
         await connection.OpenAsync();
         await using NpgsqlCommand command = connection.CreateCommand();
         command.CommandText = """
-            SELECT count(*)
+            SELECT count(*) FILTER (WHERE state = 'active'),
+                   count(*) FILTER (WHERE state = 'idle in transaction'),
+                   count(*)
             FROM pg_stat_activity
             WHERE datname = current_database()
               AND pid <> pg_backend_pid()
             """;
-        return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return new DatabaseSessionCounts(
+            reader.GetInt32(0),
+            reader.GetInt32(1),
+            reader.GetInt32(2));
+    }
+
+    private static async Task<IReadOnlyDictionary<string, string>> ReadAuditIndexesAsync(string connectionString)
+    {
+        string nonPooledConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Pooling = false
+        }.ConnectionString;
+        await using NpgsqlConnection connection = new(nonPooledConnectionString);
+        await connection.OpenAsync();
+        await using NpgsqlCommand command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT indexname, indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'AuditEntries'
+            """;
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Dictionary<string, string> indexes = new(StringComparer.Ordinal);
+        while (await reader.ReadAsync())
+        {
+            indexes.Add(reader.GetString(0), reader.GetString(1));
+        }
+
+        return indexes;
     }
 
     private static async Task LoginAsAsync(HttpClient client, string role)
@@ -493,6 +680,8 @@ public sealed class DashboardTests(PostgresFixture postgres)
     private sealed record DashboardSeed(Guid CentralBranchId, Guid FieldBranchId);
 
     private sealed record AuditSeed(string ManagerUserId);
+
+    private sealed record DatabaseSessionCounts(int Active, int IdleInTransaction, int Total);
 
     private sealed class DashboardCommandCounter : DbCommandInterceptor
     {

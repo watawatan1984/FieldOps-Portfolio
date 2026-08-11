@@ -52,10 +52,12 @@ public sealed class BranchProgressQueries(
                     (workOrder.Status == WorkOrderStatus.Scheduled || workOrder.Status == WorkOrderStatus.InProgress) &&
                     workOrder.ScheduledStartUtc.HasValue &&
                     workOrder.ScheduledStartUtc.Value < utcNow),
-                CompletionsThisMonth = group.Count(workOrder => workOrder.Events.Any(workEvent =>
-                    workEvent.EventType == WorkEventType.Completion &&
-                    workEvent.OccurredAtUtc >= utcMonthStart &&
-                    workEvent.OccurredAtUtc < utcNextMonthStart))
+                CompletionsThisMonth = group.Count(workOrder =>
+                    workOrder.Status == WorkOrderStatus.Completed &&
+                    workOrder.Events.Any(workEvent =>
+                        workEvent.EventType == WorkEventType.Completion &&
+                        workEvent.OccurredAtUtc >= utcMonthStart &&
+                        workEvent.OccurredAtUtc < utcNextMonthStart))
             })
             .ToDictionaryAsync(row => row.BranchId, cancellationToken);
 

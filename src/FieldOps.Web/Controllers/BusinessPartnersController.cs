@@ -1,5 +1,8 @@
+using System.Security.Claims;
+
 using FieldOps.Domain.Enums;
 using FieldOps.Features.Parties;
+using FieldOps.Infrastructure.Identity;
 using FieldOps.Web.Authorization;
 
 using Microsoft.AspNetCore.Authorization;
@@ -18,6 +21,22 @@ public sealed class BusinessPartnersController(
         [FromQuery] PartySearchRequest request,
         CancellationToken cancellationToken)
     {
+        if (request.BranchId == Guid.Empty)
+        {
+            Guid branchId = Guid.TryParse(
+                User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType),
+                out Guid claimedBranchId)
+                    ? claimedBranchId
+                    : await queries.GetDefaultBranchIdAsync(cancellationToken);
+            return RedirectToAction(nameof(Index), new
+            {
+                branchId,
+                request.Search,
+                request.Page,
+                request.PageSize
+            });
+        }
+
         ResourceAuthorizationOutcome outcome = await resourceAuthorizer.AuthorizeBranchAsync(
             User,
             request.BranchId,

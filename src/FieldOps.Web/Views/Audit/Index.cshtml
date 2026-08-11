@@ -14,10 +14,10 @@
 else
 {
     <p>@Model.TotalCount audit entr@(Model.TotalCount == 1 ? "y" : "ies")</p>
-    <div class="table-responsive"><table class="table align-middle"><thead><tr><th scope="col">Occurred (UTC)</th><th scope="col">Branch</th><th scope="col">Area</th><th scope="col">Action</th><th scope="col">Outcome</th><th scope="col">Changed fields</th><th scope="col">Actor</th></tr></thead><tbody>
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th scope="col">Occurred (JST, @JapanTimeFormatter.ZoneLabel)</th><th scope="col">Branch</th><th scope="col">Area</th><th scope="col">Action</th><th scope="col">Outcome</th><th scope="col">Changed fields</th><th scope="col">Actor</th></tr></thead><tbody>
     @foreach (var entry in Model.Items)
     {
-        <tr data-audit-action="@entry.Action"><td>@entry.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td><td>@entry.BranchName</td><td>@entry.AggregateType</td><td>@entry.Action</td><td>@entry.Outcome</td><td>@entry.ChangedFields</td><td>@entry.ActorDisplayName</td></tr>
+        <tr data-audit-action="@entry.Action"><td>@JapanTimeFormatter.FormatUtc(entry.OccurredAtUtc)</td><td>@entry.BranchName</td><td>@entry.AggregateType</td><td>@entry.Action</td><td>@entry.Outcome</td><td>@entry.ChangedFields</td><td>@entry.ActorDisplayName</td></tr>
     }
     </tbody></table></div>
 }

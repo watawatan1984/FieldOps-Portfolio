@@ -56,10 +56,12 @@ public sealed class DashboardQueries(
                     (workOrder.Status == WorkOrderStatus.Scheduled || workOrder.Status == WorkOrderStatus.InProgress) &&
                     workOrder.ScheduledStartUtc.HasValue &&
                     workOrder.ScheduledStartUtc.Value < utcNow),
-                CompletionsThisMonth = group.Count(workOrder => workOrder.Events.Any(workEvent =>
-                    workEvent.EventType == WorkEventType.Completion &&
-                    workEvent.OccurredAtUtc >= utcMonthStart &&
-                    workEvent.OccurredAtUtc < utcNextMonthStart))
+                CompletionsThisMonth = group.Count(workOrder =>
+                    workOrder.Status == WorkOrderStatus.Completed &&
+                    workOrder.Events.Any(workEvent =>
+                        workEvent.EventType == WorkEventType.Completion &&
+                        workEvent.OccurredAtUtc >= utcMonthStart &&
+                        workEvent.OccurredAtUtc < utcNextMonthStart))
             })
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -82,8 +84,7 @@ public sealed class DashboardQueries(
 
         return currentUser.Role switch
         {
-            SystemAdministratorRole or BranchManagerRole => query,
-            SalesRepresentativeRole => query.Where(opportunity => opportunity.OwnerUserId == currentUser.UserId),
+            SystemAdministratorRole or BranchManagerRole or SalesRepresentativeRole => query,
             FieldTechnicianRole => query.Where(opportunity => opportunity.AssignedUserId == currentUser.UserId),
             _ => throw new UnauthorizedAccessException("The current role cannot view a dashboard.")
         };
@@ -98,12 +99,7 @@ public sealed class DashboardQueries(
 
         return currentUser.Role switch
         {
-            SystemAdministratorRole or BranchManagerRole => query,
-            SalesRepresentativeRole => query.Where(workOrder =>
-                workOrder.SalesOpportunityId.HasValue &&
-                dbContext.SalesOpportunities.Any(opportunity =>
-                    opportunity.Id == workOrder.SalesOpportunityId.Value &&
-                    opportunity.OwnerUserId == currentUser.UserId)),
+            SystemAdministratorRole or BranchManagerRole or SalesRepresentativeRole => query,
             FieldTechnicianRole => query.Where(workOrder => workOrder.AssignedUserId == currentUser.UserId),
             _ => throw new UnauthorizedAccessException("The current role cannot view a dashboard.")
         };

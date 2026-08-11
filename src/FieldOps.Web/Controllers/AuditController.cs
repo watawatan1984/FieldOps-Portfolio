@@ -22,6 +22,11 @@ public sealed class AuditController(
         int pageSize = AuditQueries.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest();
+        }
+
         Guid? effectiveBranchId = branchId;
         if (!User.IsInRole(DemoRoleNames.SystemAdministrator))
         {

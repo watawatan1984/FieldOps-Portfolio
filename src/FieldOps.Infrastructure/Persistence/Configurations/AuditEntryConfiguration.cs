@@ -22,7 +22,8 @@ internal sealed class AuditEntryConfiguration : EntityConfiguration<AuditEntry>
             .WithMany()
             .HasForeignKey(audit => audit.BranchId)
             .OnDelete(DeleteBehavior.Restrict);
-        builder.HasIndex(audit => audit.BranchId);
-        builder.HasIndex(audit => new { audit.OccurredAtUtc, audit.ActorUserId }).IsDescending(true, false);
+        builder.HasIndex(audit => new { audit.OccurredAtUtc, audit.Id }).IsDescending();
+        builder.HasIndex(audit => new { audit.BranchId, audit.OccurredAtUtc, audit.Id })
+            .IsDescending(false, true, true);
     }
 }

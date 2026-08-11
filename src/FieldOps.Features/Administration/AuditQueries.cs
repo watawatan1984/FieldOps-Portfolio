@@ -60,7 +60,7 @@ public sealed class AuditQueries(
             row.AggregateType,
             row.Action,
             row.Outcome,
-            SafeChangeSummary(row.ChangeSummary),
+            AuditFieldContract.FormatForDisplay(row.ChangeSummary),
             row.OccurredAtUtc,
             row.BranchName,
             displayNames.GetValueOrDefault(row.ActorUserId, "Former demo user")))
@@ -69,13 +69,62 @@ public sealed class AuditQueries(
         return new AuditPage(branchId, effectivePage, effectivePageSize, totalCount, items);
     }
 
-    private static string SafeChangeSummary(string value)
+}
+
+public static class AuditFieldContract
+{
+    private const string Withheld = "Details withheld";
+
+    private static readonly HashSet<string> ApprovedFields = new(StringComparer.Ordinal)
     {
-        string[] fields = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return fields.Length > 0 && fields.All(field =>
-            field.All(character => char.IsLetterOrDigit(character) || character == '_'))
-                ? string.Join(", ", fields)
-                : "Details withheld";
+        "AssignedUserId",
+        "BranchId",
+        "ContactFirstName",
+        "ContactLastName",
+        "EventType",
+        "ExpectedCloseDate",
+        "IsBusinessPartner",
+        "IsCustomer",
+        "NextStatus",
+        "OccurredAtUtc",
+        "OrganizationName",
+        "OwnerUserId",
+        "PartyId",
+        "ProposedAmount",
+        "RoleType",
+        "SalesOpportunityId",
+        "ScheduledStartUtc",
+        "SiteId",
+        "SiteName",
+        "Status",
+        "Summary",
+        "TargetBranchId"
+    };
+
+    public static string NormalizeForStorage(IEnumerable<string> changedFields)
+    {
+        string[] fields = changedFields
+            .Select(field => field?.Trim() ?? string.Empty)
+            .Where(field => field.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(field => field, StringComparer.Ordinal)
+            .ToArray();
+        if (fields.Any(field => !ApprovedFields.Contains(field)))
+        {
+            throw new ArgumentException("Audit change summaries accept approved field names only.", nameof(changedFields));
+        }
+
+        return string.Join(',', fields);
+    }
+
+    public static string FormatForDisplay(string persistedSummary)
+    {
+        string[] fields = persistedSummary
+            .Split(',', StringSplitOptions.TrimEntries);
+        return fields.Length > 0 &&
+            fields.All(field => field.Length > 0 && ApprovedFields.Contains(field))
+                ? string.Join(", ", fields.Distinct(StringComparer.Ordinal))
+                : Withheld;
     }
 }
 

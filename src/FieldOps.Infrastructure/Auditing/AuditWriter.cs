@@ -1,5 +1,6 @@
 using FieldOps.Domain.Entities;
 using FieldOps.Features.Abstractions;
+using FieldOps.Features.Administration;
 
 namespace FieldOps.Infrastructure.Auditing;
 
@@ -31,24 +32,13 @@ public sealed class AuditWriter(
             throw new ArgumentException("A branch identifier is required.", nameof(branchId));
         }
 
-        string[] fieldNames = changedFields
-            .Select(field => field?.Trim() ?? string.Empty)
-            .Where(field => field.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(field => field, StringComparer.Ordinal)
-            .ToArray();
-        if (fieldNames.Any(field => field.Any(character => !char.IsLetterOrDigit(character) && character != '_')))
-        {
-            throw new ArgumentException("Audit change summaries accept field names only.", nameof(changedFields));
-        }
-
         dbContext.AuditEntries.Add(new AuditEntry(
             aggregateType,
             aggregateId,
             branchId,
             action,
             outcome,
-            string.Join(',', fieldNames),
+            AuditFieldContract.NormalizeForStorage(changedFields),
             timeProvider.GetUtcNow().UtcDateTime,
             currentUser.UserId));
     }
