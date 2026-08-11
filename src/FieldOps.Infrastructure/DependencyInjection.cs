@@ -1,7 +1,8 @@
 using FieldOps.Features.Abstractions;
+using FieldOps.Infrastructure.Auditing;
+using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 
-using FieldOps.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,9 @@ public static class DependencyInjection
             .AddDefaultTokenProviders();
         services.AddScoped<DemoIdentitySeeder>();
         services.AddScoped<IFieldOpsDbContext>(provider => provider.GetRequiredService<FieldOpsDbContext>());
+        services.AddScoped<IMutationExecutor, MutationExecutor>();
+        services.AddScoped<IAuditWriter, AuditWriter>();
+        services.AddSingleton(TimeProvider.System);
         return services;
     }
 }
