@@ -98,7 +98,7 @@ Rollback evidence used a business `Branch` and its `AuditEntry`, called `SaveCha
 
 ## Commit
 
-`COMMIT_SHA_PENDING` - `Add transactional diagnostics and health`
+`5751c78` - `Add transactional diagnostics and health`
 
 ## Concerns
 
