@@ -17,11 +17,11 @@ public sealed class Party : Entity
         LastName = lastName;
     }
 
-    public string? OrganizationName { get; }
+    public string? OrganizationName { get; private set; }
 
-    public string? FirstName { get; }
+    public string? FirstName { get; private set; }
 
-    public string? LastName { get; }
+    public string? LastName { get; private set; }
 
     public bool IsOrganization => OrganizationName is not null;
 
@@ -38,6 +38,17 @@ public sealed class Party : Entity
 
     public static Party CreatePerson(string firstName, string lastName) =>
         new(null, RequiredText(firstName, nameof(firstName)), RequiredText(lastName, nameof(lastName)));
+
+    public void UpdateOrganizationName(string organizationName)
+    {
+        if (!IsOrganization)
+        {
+            throw new DomainException("A person party cannot be updated as an organization.");
+        }
+
+        OrganizationName = RequiredText(organizationName, nameof(organizationName));
+        Touch();
+    }
 
     public void AddRole(PartyRoleType roleType)
     {

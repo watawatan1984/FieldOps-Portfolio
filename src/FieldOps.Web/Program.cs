@@ -1,5 +1,6 @@
 using FieldOps.Domain.Common;
 using FieldOps.Features.Abstractions;
+using FieldOps.Features.Parties;
 using FieldOps.Infrastructure;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
@@ -26,6 +27,8 @@ builder.Logging.AddConsoleFormatter<RedactedJsonConsoleFormatter, ConsoleFormatt
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+builder.Services.AddScoped<PartyQueries>();
+builder.Services.AddScoped<PartyCommands>();
 builder.Services.AddFieldOpsAuthorization();
 builder.Services.AddFieldOpsInfrastructure(
     builder.Configuration.GetConnectionString("FieldOps") ??

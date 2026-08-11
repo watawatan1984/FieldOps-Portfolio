@@ -1,0 +1,10 @@
+@model FieldOps.Features.Parties.PartyDetailsViewModel
+@{
+    ViewData["Title"] = Model.DisplayName;
+}
+<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">Parties</a></li><li class="breadcrumb-item active" aria-current="page">@Model.DisplayName</li></ol></nav>
+<h1>@Model.DisplayName</h1>
+<p class="text-body-secondary">Branch scope: <strong>@Model.BranchName</strong></p>
+<p><span class="badge text-bg-light">@Model.PartyKind</span> @if (Model.IsCustomer) { <span class="badge text-bg-primary">Customer</span> } @if (Model.IsBusinessPartner) { <span class="badge text-bg-secondary">Business partner</span> }</p>
+<p><a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-branchId="@Model.BranchId">Edit party</a></p>
+<div class="row"><section class="col-md-4" aria-labelledby="contacts-heading"><h2 id="contacts-heading" class="h4">Contacts</h2>@if (Model.Contacts.Count == 0) { <p>No contacts recorded.</p> } else { <ul>@foreach (string contact in Model.Contacts) { <li>@contact</li> }</ul> }</section><section class="col-md-4" aria-labelledby="sites-heading"><h2 id="sites-heading" class="h4">Sites</h2>@if (Model.Sites.Count == 0) { <p>No sites recorded for this branch.</p> } else { <ul>@foreach (string site in Model.Sites) { <li>@site</li> }</ul> }</section><section class="col-md-4" aria-labelledby="branches-heading"><h2 id="branches-heading" class="h4">Assigned branches</h2><ul>@foreach (string branch in Model.AssignedBranches) { <li>@branch</li> }</ul></section></div>

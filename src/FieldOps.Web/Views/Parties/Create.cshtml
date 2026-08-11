@@ -1,0 +1,17 @@
+@model FieldOps.Features.Parties.CreatePartyInput
+@using FieldOps.Domain.Enums
+@{
+    ViewData["Title"] = "Create party";
+}
+<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">Parties</a></li><li class="breadcrumb-item active" aria-current="page">Create</li></ol></nav>
+<h1>Create party</h1>
+<p class="text-body-secondary">Branch scope: <strong>@ViewData["BranchName"]</strong></p>
+<form asp-action="Create" method="post">
+    <div asp-validation-summary="All" class="text-danger" role="alert" tabindex="-1"></div><input asp-for="BranchId" type="hidden" />
+    <div class="mb-3"><label asp-for="OrganizationName" class="form-label"></label><input asp-for="OrganizationName" class="form-control" autofocus /><span asp-validation-for="OrganizationName" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="RoleType" class="form-label"></label><select asp-for="RoleType" asp-items="Html.GetEnumSelectList<PartyRoleType>()" class="form-select"></select><span asp-validation-for="RoleType" class="text-danger"></span></div>
+    <fieldset class="mb-3"><legend class="h5">Primary contact (optional)</legend><div class="row"><div class="col-sm-6"><label asp-for="ContactFirstName" class="form-label"></label><input asp-for="ContactFirstName" class="form-control" /><span asp-validation-for="ContactFirstName" class="text-danger"></span></div><div class="col-sm-6"><label asp-for="ContactLastName" class="form-label"></label><input asp-for="ContactLastName" class="form-control" /><span asp-validation-for="ContactLastName" class="text-danger"></span></div></div></fieldset>
+    <div class="mb-3"><label asp-for="SiteName" class="form-label"></label><input asp-for="SiteName" class="form-control" /><span asp-validation-for="SiteName" class="text-danger"></span></div>
+    <button type="submit" class="btn btn-primary">Create party</button><a asp-action="Index" asp-route-branchId="@Model.BranchId" class="btn btn-link">Cancel</a>
+</form>
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

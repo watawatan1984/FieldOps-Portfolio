@@ -1,0 +1,79 @@
+@model FieldOps.Features.Parties.PartyIndexViewModel
+@using FieldOps.Domain.Enums
+@{
+    ViewData["Title"] = "Parties";
+}
+
+<nav aria-label="Breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Parties</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Parties</h1>
+        <p class="text-body-secondary mb-0">Branch scope: <strong>@Model.BranchName</strong></p>
+    </div>
+    <a class="btn btn-primary" asp-action="Create" asp-route-branchId="@Model.BranchId">Create party</a>
+</div>
+
+<ul class="nav nav-tabs mb-3" aria-label="Party roles">
+    <li class="nav-item"><a class="nav-link @(Model.Role is null ? "active" : null)" href="@Url.Action("Index", new { branchId = Model.BranchId, search = Model.Search })">All parties</a></li>
+    <li class="nav-item"><a class="nav-link @(Model.Role == PartyRoleType.Customer ? "active" : null)" href="@Url.Action("Index", "Customers", new { branchId = Model.BranchId, search = Model.Search })">Customers</a></li>
+    <li class="nav-item"><a class="nav-link @(Model.Role == PartyRoleType.BusinessPartner ? "active" : null)" href="@Url.Action("Index", "BusinessPartners", new { branchId = Model.BranchId, search = Model.Search })">Business partners</a></li>
+</ul>
+
+<form method="get" class="row g-2 mb-4" role="search">
+    <input type="hidden" name="branchId" value="@Model.BranchId" />
+    @if (Model.Role is not null)
+    {
+        <input type="hidden" name="role" value="@Model.Role" />
+    }
+    <div class="col-sm-8">
+        <label for="party-search" class="form-label">Search name, contact, or site</label>
+        <input id="party-search" class="form-control" name="search" value="@Model.Search" />
+    </div>
+    <div class="col-sm-4 align-self-end">
+        <button class="btn btn-primary" type="submit">Search</button>
+    </div>
+</form>
+
+@if (Model.Items.Count == 0)
+{
+    <div class="alert alert-info" role="status">No parties match this branch and search.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead><tr><th scope="col">Party</th><th scope="col">Roles</th><th scope="col">Primary contact</th><th scope="col">Site</th></tr></thead>
+            <tbody>
+            @foreach (var party in Model.Items)
+            {
+                <tr>
+                    <th scope="row"><a asp-action="Details" asp-route-id="@party.Id" asp-route-branchId="@Model.BranchId">@party.DisplayName</a></th>
+                    <td>
+                        @if (party.IsCustomer) { <span class="badge text-bg-primary">Customer</span> }
+                        @if (party.IsBusinessPartner) { <span class="badge text-bg-secondary">Business partner</span> }
+                    </td>
+                    <td>@(party.PrimaryContact ?? "Not provided")</td>
+                    <td>@(party.PrimarySite ?? "Not provided")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<nav aria-label="Party pages">
+    <ul class="pagination">
+        @for (int page = 1; page <= Model.TotalPages; page++)
+        {
+            <li class="page-item @(page == Model.Page ? "active" : null)">
+                <a class="page-link" href="@Url.Action("Index", new { branchId = Model.BranchId, search = Model.Search, role = Model.Role, page = page, pageSize = Model.PageSize })">@(page)</a>
+            </li>
+        }
+    </ul>
+</nav>

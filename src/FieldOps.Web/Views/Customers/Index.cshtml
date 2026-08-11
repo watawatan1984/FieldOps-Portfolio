@@ -1,0 +1,32 @@
+@model FieldOps.Features.Parties.PartyIndexViewModel
+@{
+    ViewData["Title"] = "Customers";
+}
+
+<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item"><a href="@Url.Action("Index", "Parties", new { branchId = Model.BranchId })">Parties</a></li><li class="breadcrumb-item active" aria-current="page">Customers</li></ol></nav>
+<h1>Customers</h1>
+<p class="text-body-secondary">Branch scope: <strong>@Model.BranchName</strong></p>
+<form method="get" class="row g-2 mb-4" role="search">
+    <input type="hidden" name="branchId" value="@Model.BranchId" />
+    <div class="col-sm-8"><label class="form-label" for="customer-search">Search name, contact, or site</label><input class="form-control" id="customer-search" name="search" value="@Model.Search" /></div>
+    <div class="col-sm-4 align-self-end"><button class="btn btn-primary" type="submit">Search</button></div>
+</form>
+@if (Model.Items.Count == 0)
+{
+    <div class="alert alert-info" role="status">No customers match this branch and search.</div>
+}
+else
+{
+    <ul class="list-group mb-3">
+    @foreach (var party in Model.Items)
+    {
+        <li class="list-group-item d-flex justify-content-between"><a asp-controller="Parties" asp-action="Details" asp-route-id="@party.Id" asp-route-branchId="@Model.BranchId">@party.DisplayName</a><span class="badge text-bg-primary">Customer</span></li>
+    }
+    </ul>
+}
+<nav aria-label="Customer pages"><ul class="pagination">
+@for (int page = 1; page <= Model.TotalPages; page++)
+{
+    <li class="page-item @(page == Model.Page ? "active" : null)"><a class="page-link" href="@Url.Action("Index", new { branchId = Model.BranchId, search = Model.Search, page = page, pageSize = Model.PageSize })">@(page)</a></li>
+}
+</ul></nav>

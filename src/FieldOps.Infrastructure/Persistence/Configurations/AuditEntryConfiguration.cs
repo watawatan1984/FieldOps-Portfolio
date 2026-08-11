@@ -12,9 +12,17 @@ internal sealed class AuditEntryConfiguration : EntityConfiguration<AuditEntry>
         builder.ToTable("AuditEntries");
         builder.Property(audit => audit.AggregateType).IsRequired();
         builder.Property(audit => audit.AggregateId);
+        builder.Property(audit => audit.BranchId);
         builder.Property(audit => audit.Action).IsRequired();
+        builder.Property(audit => audit.Outcome).IsRequired();
+        builder.Property(audit => audit.ChangeSummary).IsRequired();
         builder.Property(audit => audit.OccurredAtUtc).HasColumnType("timestamp with time zone");
         builder.Property(audit => audit.ActorUserId).IsRequired();
+        builder.HasOne<Branch>()
+            .WithMany()
+            .HasForeignKey(audit => audit.BranchId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(audit => audit.BranchId);
         builder.HasIndex(audit => new { audit.OccurredAtUtc, audit.ActorUserId }).IsDescending(true, false);
     }
 }

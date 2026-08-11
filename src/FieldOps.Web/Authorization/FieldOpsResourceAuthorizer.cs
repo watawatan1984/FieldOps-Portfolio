@@ -28,6 +28,13 @@ public interface IFieldOpsResourceAuthorizer
         BranchResourceAction action,
         CancellationToken cancellationToken = default);
 
+    Task<ResourceAuthorizationOutcome> AuthorizePartyAsync(
+        ClaimsPrincipal user,
+        Guid partyId,
+        Guid branchId,
+        BranchResourceAction action,
+        CancellationToken cancellationToken = default);
+
     Task<ResourceAuthorizationOutcome> AuthorizeWorkOrderAsync(
         ClaimsPrincipal user,
         Guid workOrderId,
@@ -75,6 +82,34 @@ public sealed class FieldOpsResourceAuthorizer(
                 resource,
                 action,
                 action is BranchResourceAction.ViewDashboard or BranchResourceAction.ReadSales or BranchResourceAction.ManageSales);
+    }
+
+    public async Task<ResourceAuthorizationOutcome> AuthorizePartyAsync(
+        ClaimsPrincipal user,
+        Guid partyId,
+        Guid branchId,
+        BranchResourceAction action,
+        CancellationToken cancellationToken = default)
+    {
+        bool? assignedToRequestedBranch = await dbContext.Parties
+            .Where(party => party.Id == partyId)
+            .Select(party => (bool?)party.BranchAssignments.Any(assignment => assignment.BranchId == branchId))
+            .SingleOrDefaultAsync(cancellationToken);
+        if (assignedToRequestedBranch is null)
+        {
+            return ResourceAuthorizationOutcome.NotFound;
+        }
+
+        if (!assignedToRequestedBranch.Value)
+        {
+            return ResourceAuthorizationOutcome.Forbidden;
+        }
+
+        return await AuthorizeAsync(
+            user,
+            new BranchAccessResource(branchId, null),
+            action,
+            action is BranchResourceAction.ManageParties);
     }
 
     public async Task<ResourceAuthorizationOutcome> AuthorizeWorkOrderAsync(
