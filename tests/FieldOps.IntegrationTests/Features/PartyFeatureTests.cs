@@ -16,6 +16,47 @@ namespace FieldOps.IntegrationTests.Features;
 public sealed class PartyFeatureTests(PostgresFixture postgres)
 {
     [Fact]
+    public async Task UnicodeNamesThatPostgresNormalizesEquallyShareOneConcurrentLock()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        const string dotlessName = "Fictional Unicode ı";
+        const string asciiName = "Fictional Unicode i";
+        string dotlessDatabaseName = await GetDatabaseUpperAsync(application, dotlessName);
+        string asciiDatabaseName = await GetDatabaseUpperAsync(application, asciiName);
+        Assert.Equal(asciiDatabaseName, dotlessDatabaseName);
+        Assert.NotEqual(asciiName.ToUpperInvariant(), dotlessName.ToUpperInvariant());
+
+        Guid branchId = await GetBranchIdAsync(application, "sales.rep@fieldops.demo");
+        await InstallPartyWriteDelayAsync(application);
+        using HttpClient firstClient = CreateClient(application);
+        using HttpClient secondClient = CreateClient(application);
+        await LoginAsAsync(firstClient, DemoRoleNames.SalesRepresentative);
+        await LoginAsAsync(secondClient, DemoRoleNames.SalesRepresentative);
+        string firstToken = await GetAntiforgeryTokenAsync(firstClient, $"/parties/create?branchId={branchId}");
+        string secondToken = await GetAntiforgeryTokenAsync(secondClient, $"/parties/create?branchId={branchId}");
+
+        Task<HttpResponseMessage> firstRequest = firstClient.PostAsync(
+            "/parties/create",
+            CreatePartyForm(branchId, dotlessName, firstToken));
+        Task<HttpResponseMessage> secondRequest = secondClient.PostAsync(
+            "/parties/create",
+            CreatePartyForm(branchId, asciiName, secondToken));
+        HttpResponseMessage[] responses = await Task.WhenAll(firstRequest, secondRequest);
+        using HttpResponseMessage firstResponse = responses[0];
+        using HttpResponseMessage secondResponse = responses[1];
+
+        Assert.Equal(
+            [HttpStatusCode.Redirect, HttpStatusCode.Conflict],
+            responses.Select(response => response.StatusCode).Order().ToArray());
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.Equal(1, await dbContext.Parties.CountAsync(
+            party => EF.Property<string>(party, "NormalizedName") == asciiDatabaseName));
+        Assert.Equal(1, await dbContext.AuditEntries.CountAsync(audit => audit.Action == "Created"));
+    }
+
+    [Fact]
     public async Task ConcurrentDuplicateCreatesProduceOneSuccessAndOneConflict()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
@@ -199,12 +240,14 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         token = await GetAntiforgeryTokenAsync(client, $"/parties/{partyId}/edit?branchId={branchId}");
         uint staleVersion = await GetPartyVersionAsync(application, partyId);
         await RenamePartyOutOfBandAsync(application, partyId);
+        uint refreshedVersion = await GetPartyVersionAsync(application, partyId);
         using HttpResponseMessage stale = await client.PostAsync(
             $"/parties/{partyId}/share",
             SharePartyForm(branchId, targetBranchId, staleVersion, token));
         string staleHtml = await stale.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         Assert.Contains("changed after you opened", staleHtml);
+        Assert.Equal(refreshedVersion.ToString(), GetInputValue(staleHtml, "Version"));
 
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
@@ -594,6 +637,17 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         await dbContext.SaveChangesAsync();
     }
 
+    private static async Task<string> GetDatabaseUpperAsync(
+        FieldOpsWebApplicationFactory application,
+        string value)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        return await dbContext.Database
+            .SqlQuery<string>($"SELECT upper({value}) AS \"Value\"")
+            .SingleAsync();
+    }
+
     private static async Task SharePartyOutOfBandAsync(
         FieldOpsWebApplicationFactory application,
         Guid partyId,
@@ -724,4 +778,10 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
             ["Version"] = version.ToString(),
             ["__RequestVerificationToken"] = token
         });
+
+    private static string GetInputValue(string html, string id) =>
+        Regex.Match(
+            html,
+            $"<input(?=[^>]*id=\"{Regex.Escape(id)}\")(?=[^>]*value=\"([^\"]*)\")[^>]*>",
+            RegexOptions.IgnoreCase).Groups[1].Value;
 }

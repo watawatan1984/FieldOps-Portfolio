@@ -233,6 +233,7 @@ public sealed class PartiesController(
         }
         catch (PartyConcurrencyException)
         {
+            ModelState.Remove(nameof(input.Version));
             ModelState.AddModelError(string.Empty, "This party changed after you opened the form. Reload and try again.");
             return await EditWithShareOutcomeAsync(
                 id,

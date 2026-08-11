@@ -36,8 +36,10 @@ public sealed class PartyCommands(
             "party-create",
             async token =>
             {
-                string normalizedName = input.OrganizationName.Trim().ToUpperInvariant();
-                await partyNameLock.AcquireAsync(normalizedName, token);
+                Party party = Party.CreateOrganization(input.OrganizationName);
+                string normalizedName = await partyNameLock.NormalizeAndAcquireAsync(
+                    party.OrganizationName!,
+                    token);
                 if (await dbContext.Parties.AnyAsync(
                     party => EF.Property<string>(party, "NormalizedName") == normalizedName,
                     token))
@@ -48,7 +50,6 @@ public sealed class PartyCommands(
                 Branch branch = await dbContext.Branches.SingleOrDefaultAsync(
                     item => item.Id == input.BranchId,
                     token) ?? throw new KeyNotFoundException("Branch not found.");
-                Party party = Party.CreateOrganization(input.OrganizationName);
                 party.AddRole(input.RoleType);
                 party.AssignToBranch(branch);
                 List<string> changedFields = [nameof(input.OrganizationName), nameof(input.RoleType), nameof(input.BranchId)];
@@ -89,8 +90,8 @@ public sealed class PartyCommands(
                     throw new UnauthorizedAccessException("Party is not assigned to this branch.");
                 }
 
-                string normalizedName = input.OrganizationName.Trim().ToUpperInvariant();
-                await partyNameLock.AcquireAsync(normalizedName, token);
+                string candidateName = input.OrganizationName.Trim();
+                string normalizedName = await partyNameLock.NormalizeAndAcquireAsync(candidateName, token);
                 if (await dbContext.Parties.AnyAsync(
                     item => item.Id != input.Id && EF.Property<string>(item, "NormalizedName") == normalizedName,
                     token))

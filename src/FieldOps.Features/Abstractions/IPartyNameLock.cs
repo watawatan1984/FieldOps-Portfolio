@@ -2,5 +2,5 @@ namespace FieldOps.Features.Abstractions;
 
 public interface IPartyNameLock
 {
-    Task AcquireAsync(string normalizedName, CancellationToken cancellationToken = default);
+    Task<string> NormalizeAndAcquireAsync(string partyName, CancellationToken cancellationToken = default);
 }
