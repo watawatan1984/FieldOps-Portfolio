@@ -1,0 +1,26 @@
+@model IReadOnlyList<DemoRoleCardViewModel>
+@{
+    ViewData["Title"] = "Demo sign in";
+}
+
+<h1>Choose a demo role</h1>
+<p>Each fictional identity demonstrates a different authorization scope.</p>
+
+<div class="row row-cols-1 row-cols-md-2 g-3">
+    @foreach (DemoRoleCardViewModel card in Model)
+    {
+        <div class="col">
+            <section class="card h-100">
+                <div class="card-body">
+                    <h2 class="h5">@card.Role</h2>
+                    <p class="mb-1">@card.DisplayName</p>
+                    <p class="text-muted">@card.Description</p>
+                    <form method="post" asp-controller="DemoLogin" asp-action="Index">
+                        <input type="hidden" name="roleToken" value="@card.LoginToken" />
+                        <button class="btn btn-primary" type="submit">Continue as @card.Role</button>
+                    </form>
+                </div>
+            </section>
+        </div>
+    }
+</div>

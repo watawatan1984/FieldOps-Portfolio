@@ -1,9 +1,12 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using FieldOps.Web.Models;
+using FieldOps.Web.Authorization;
+using Microsoft.AspNetCore.Authorization;
 
 namespace FieldOps.Web.Controllers;
 
+[Authorize(Policy = Policies.ViewDashboard)]
 public class HomeController : Controller
 {
     public IActionResult Index()

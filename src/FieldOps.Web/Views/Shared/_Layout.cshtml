@@ -1,4 +1,15 @@
 ﻿<!DOCTYPE html>
+@using FieldOps.Web.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
+@{
+    bool canViewDashboard = (await AuthorizationService.AuthorizeAsync(User, Policies.ViewDashboard)).Succeeded;
+    bool canManageParties = (await AuthorizationService.AuthorizeAsync(User, Policies.ManageParties)).Succeeded;
+    bool canReadSales = (await AuthorizationService.AuthorizeAsync(User, Policies.ReadSales)).Succeeded;
+    bool canReadWorkOrders = (await AuthorizationService.AuthorizeAsync(User, Policies.ReadWorkOrders)).Succeeded;
+    bool canViewAudit = (await AuthorizationService.AuthorizeAsync(User, Policies.ViewAudit)).Succeeded;
+    bool canResetDemo = (await AuthorizationService.AuthorizeAsync(User, Policies.ResetDemo)).Succeeded;
+}
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -20,12 +31,42 @@
                 </button>
                 <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
                     <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
-                        </li>
+                        @if (canViewDashboard)
+                        {
+                            <li class="nav-item" data-policy="@Policies.ViewDashboard">
+                                <a class="nav-link text-dark" href="/">Dashboard</a>
+                            </li>
+                        }
+                        @if (canManageParties)
+                        {
+                            <li class="nav-item" data-policy="@Policies.ManageParties">
+                                <a class="nav-link text-dark" href="/parties">Parties</a>
+                            </li>
+                        }
+                        @if (canReadSales)
+                        {
+                            <li class="nav-item" data-policy="@Policies.ReadSales">
+                                <a class="nav-link text-dark" href="/sales">Sales</a>
+                            </li>
+                        }
+                        @if (canReadWorkOrders)
+                        {
+                            <li class="nav-item" data-policy="@Policies.ReadWorkOrders">
+                                <a class="nav-link text-dark" href="/work-orders">Work orders</a>
+                            </li>
+                        }
+                        @if (canViewAudit)
+                        {
+                            <li class="nav-item" data-policy="@Policies.ViewAudit">
+                                <a class="nav-link text-dark" href="/audit">Audit</a>
+                            </li>
+                        }
+                        @if (canResetDemo)
+                        {
+                            <li class="nav-item" data-policy="@Policies.ResetDemo">
+                                <a class="nav-link text-dark" href="/demo-reset">Reset demo</a>
+                            </li>
+                        }
                     </ul>
                 </div>
             </div>
