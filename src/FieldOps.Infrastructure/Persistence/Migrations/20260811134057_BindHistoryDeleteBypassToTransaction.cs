@@ -5,14 +5,14 @@
 namespace FieldOps.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class EnforceAppendOnlyHistory : Migration
+    public partial class BindHistoryDeleteBypassToTransaction : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(
                 """
-                CREATE FUNCTION "fieldops_reject_historical_delete"() RETURNS trigger
+                CREATE OR REPLACE FUNCTION "fieldops_reject_historical_delete"() RETURNS trigger
                 LANGUAGE plpgsql
                 AS $fieldops$
                 BEGIN
@@ -27,28 +27,13 @@ namespace FieldOps.Infrastructure.Persistence.Migrations
 
                 COMMENT ON FUNCTION "fieldops_reject_historical_delete"() IS
                     'Rejects historical deletes unless the current transaction explicitly presents its own txid token.';
-
-                CREATE TRIGGER "TR_WorkEvents_AppendOnly"
-                    BEFORE DELETE ON "WorkEvents"
-                    FOR EACH ROW
-                    EXECUTE FUNCTION "fieldops_reject_historical_delete"();
-
-                CREATE TRIGGER "TR_AuditEntries_AppendOnly"
-                    BEFORE DELETE ON "AuditEntries"
-                    FOR EACH ROW
-                    EXECUTE FUNCTION "fieldops_reject_historical_delete"();
                 """);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql(
-                """
-                DROP TRIGGER IF EXISTS "TR_WorkEvents_AppendOnly" ON "WorkEvents";
-                DROP TRIGGER IF EXISTS "TR_AuditEntries_AppendOnly" ON "AuditEntries";
-                DROP FUNCTION IF EXISTS "fieldops_reject_historical_delete"();
-                """);
+            // Security hardening is intentionally monotonic: rollback must not restore a session-reusable bypass.
         }
     }
 }

@@ -190,7 +190,29 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task DemoResetBypassAllowsHistoricalDeletesOnlyInsideItsTransaction()
+    public async Task SessionScopedBooleanCannotAuthorizeHistoricalDeletes()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+
+        await using FieldOpsDbContext context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+        context.AuditEntries.Add(new AuditEntry(
+            nameof(Party),
+            Guid.NewGuid(),
+            "Fictional session bypass audit action",
+            new DateTime(2026, 8, 11, 2, 40, 0, DateTimeKind.Utc),
+            "fictional.session.user"));
+        await context.SaveChangesAsync();
+
+        await context.Database.OpenConnectionAsync();
+        await context.Database.ExecuteSqlRawAsync("SET fieldops.allow_historical_delete = 'on'");
+
+        PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => context.AuditEntries.ExecuteDeleteAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, exception.SqlState);
+    }
+
+    [Fact]
+    public async Task CurrentTransactionIdTokenAllowsHistoricalDeletesOnlyInsideItsTransaction()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
 
@@ -217,7 +239,8 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
         await using FieldOpsDbContext resetContext = CreateContext(connectionString);
         await using (var transaction = await resetContext.Database.BeginTransactionAsync())
         {
-            await resetContext.Database.ExecuteSqlRawAsync("SET LOCAL fieldops.allow_historical_delete = 'on'");
+            await resetContext.Database.ExecuteSqlRawAsync(
+                "SELECT set_config('fieldops.allow_historical_delete', txid_current()::text, true)");
             Assert.Equal(1, await resetContext.Set<WorkEvent>().ExecuteDeleteAsync());
             Assert.Equal(1, await resetContext.AuditEntries.ExecuteDeleteAsync());
             await transaction.CommitAsync();
@@ -234,7 +257,85 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
             "fictional.reset.user"));
         await resetContext.SaveChangesAsync();
 
-        await Assert.ThrowsAsync<PostgresException>(() => resetContext.AuditEntries.ExecuteDeleteAsync());
+        PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => resetContext.AuditEntries.ExecuteDeleteAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, exception.SqlState);
+    }
+
+    [Fact]
+    public async Task RollingBackTheAuthorizedTransactionRemovesDeleteAuthority()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsDbContext context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+        context.AuditEntries.Add(new AuditEntry(
+            nameof(Party),
+            Guid.NewGuid(),
+            "Fictional rollback audit action",
+            new DateTime(2026, 8, 11, 3, 15, 0, DateTimeKind.Utc),
+            "fictional.rollback.user"));
+        await context.SaveChangesAsync();
+        await context.Database.OpenConnectionAsync();
+
+        await using (var authorizedTransaction = await context.Database.BeginTransactionAsync())
+        {
+            await context.Database.ExecuteSqlRawAsync(
+                "SELECT set_config('fieldops.allow_historical_delete', txid_current()::text, true)");
+            Assert.Equal(1, await context.AuditEntries.ExecuteDeleteAsync());
+            await authorizedTransaction.RollbackAsync();
+        }
+
+        Assert.Single(await context.AuditEntries.ToListAsync());
+
+        await using var laterTransaction = await context.Database.BeginTransactionAsync();
+        PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => context.AuditEntries.ExecuteDeleteAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, exception.SqlState);
+        await laterTransaction.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task ReusedPooledConnectionAndNewTransactionAreRelocked()
+    {
+        NpgsqlConnectionStringBuilder pooledConnection = new(await postgres.CreateEmptyDatabaseAsync())
+        {
+            ApplicationName = $"fieldops-history-pool-{Guid.NewGuid():N}",
+            MinPoolSize = 1,
+            MaxPoolSize = 1,
+            NoResetOnClose = true
+        };
+        int firstBackendProcessId;
+        string firstTransactionId;
+
+        await using (FieldOpsDbContext firstContext = CreateContext(pooledConnection.ConnectionString))
+        {
+            await firstContext.Database.MigrateAsync();
+            firstContext.AuditEntries.Add(new AuditEntry(
+                nameof(Party),
+                Guid.NewGuid(),
+                "Fictional pooled audit action",
+                new DateTime(2026, 8, 11, 3, 30, 0, DateTimeKind.Utc),
+                "fictional.pool.user"));
+            await firstContext.SaveChangesAsync();
+            await firstContext.Database.OpenConnectionAsync();
+            firstBackendProcessId = await GetBackendProcessIdAsync(firstContext);
+
+            await using var firstTransaction = await firstContext.Database.BeginTransactionAsync();
+            firstTransactionId = await GetCurrentTransactionIdAsync(firstContext);
+            await firstContext.Database.ExecuteSqlRawAsync(
+                "SELECT set_config('fieldops.allow_historical_delete', txid_current()::text, false)");
+            await firstTransaction.CommitAsync();
+            await firstContext.Database.CloseConnectionAsync();
+        }
+
+        await using FieldOpsDbContext reusedContext = CreateContext(pooledConnection.ConnectionString);
+        await reusedContext.Database.OpenConnectionAsync();
+        Assert.Equal(firstBackendProcessId, await GetBackendProcessIdAsync(reusedContext));
+        Assert.Equal(firstTransactionId, await GetHistoricalDeleteSettingAsync(reusedContext));
+
+        await using var laterTransaction = await reusedContext.Database.BeginTransactionAsync();
+        Assert.NotEqual(firstTransactionId, await GetCurrentTransactionIdAsync(reusedContext));
+        PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => reusedContext.AuditEntries.ExecuteDeleteAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, exception.SqlState);
+        await laterTransaction.RollbackAsync();
     }
 
     [Fact]
@@ -300,5 +401,27 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
             .Options;
 
         return new FieldOpsDbContext(options);
+    }
+
+    private static async Task<int> GetBackendProcessIdAsync(FieldOpsDbContext context)
+    {
+        NpgsqlConnection connection = (NpgsqlConnection)context.Database.GetDbConnection();
+        await using NpgsqlCommand command = new("SELECT pg_backend_pid()", connection);
+        object result = await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("PostgreSQL did not return a backend process identifier.");
+        return Convert.ToInt32(result);
+    }
+
+    private static async Task<string> GetCurrentTransactionIdAsync(FieldOpsDbContext context)
+    {
+        NpgsqlConnection connection = (NpgsqlConnection)context.Database.GetDbConnection();
+        await using NpgsqlCommand command = new("SELECT txid_current()::text", connection);
+        return (string)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("PostgreSQL did not return a transaction identifier."));
+    }
+
+    private static async Task<string> GetHistoricalDeleteSettingAsync(FieldOpsDbContext context)
+    {
+        NpgsqlConnection connection = (NpgsqlConnection)context.Database.GetDbConnection();
+        await using NpgsqlCommand command = new("SELECT current_setting('fieldops.allow_historical_delete', true)", connection);
+        return (string)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("PostgreSQL did not return the historical-delete setting."));
     }
 }
