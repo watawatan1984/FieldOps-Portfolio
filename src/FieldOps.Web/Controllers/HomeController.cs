@@ -1,17 +1,35 @@
 using System.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
-using FieldOps.Web.Models;
+using System.Security.Claims;
+
+using FieldOps.Features.Dashboard;
+using FieldOps.Infrastructure.Identity;
 using FieldOps.Web.Authorization;
+using FieldOps.Web.Models;
+
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace FieldOps.Web.Controllers;
 
 [Authorize(Policy = Policies.ViewDashboard)]
-public class HomeController : Controller
+public sealed class HomeController(DashboardQueries dashboardQueries) : Controller
 {
-    public IActionResult Index()
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
-        return View();
+        Guid? branchId = null;
+        if (!User.IsInRole(DemoRoleNames.SystemAdministrator))
+        {
+            if (!Guid.TryParse(
+                User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType),
+                out Guid claimedBranchId))
+            {
+                return Forbid();
+            }
+
+            branchId = claimedBranchId;
+        }
+
+        return View(await dashboardQueries.GetAsync(branchId, cancellationToken));
     }
 
     public IActionResult Privacy()

@@ -1,0 +1,29 @@
+@model IReadOnlyList<FieldOps.Features.Dashboard.BranchProgressItem>
+@{
+    ViewData["Title"] = "National branch comparison";
+}
+
+<h1>National branch comparison</h1>
+<p class="text-muted">All measures use the same UTC definitions shown on the dashboard.</p>
+
+@if (Model.Count == 0)
+{
+    <p class="alert alert-info" role="status">No branches are available.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead><tr><th scope="col">Branch</th><th scope="col">Open opportunities</th><th scope="col">Proposals due</th><th scope="col">Scheduled</th><th scope="col">In progress</th><th scope="col">Overdue</th><th scope="col">Completed this month</th></tr></thead>
+            <tbody>
+            @foreach (var branch in Model)
+            {
+                <tr data-branch-id="@branch.BranchId" data-open-opportunities="@branch.Metrics.OpenOpportunities">
+                    <th scope="row"><a asp-action="Details" asp-route-id="@branch.BranchId">@branch.BranchName</a></th>
+                    <td>@branch.Metrics.OpenOpportunities</td><td>@branch.Metrics.ProposalsDue</td><td>@branch.Metrics.ScheduledWork</td><td>@branch.Metrics.WorkInProgress</td><td>@branch.Metrics.OverdueWork</td><td>@branch.Metrics.CompletionsThisMonth</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

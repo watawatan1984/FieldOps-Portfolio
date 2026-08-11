@@ -1,0 +1,129 @@
+using FieldOps.Domain.Entities;
+using FieldOps.Domain.Enums;
+using FieldOps.Features.Abstractions;
+
+using Microsoft.EntityFrameworkCore;
+
+namespace FieldOps.Features.Dashboard;
+
+public sealed class DashboardQueries(
+    IFieldOpsDbContext dbContext,
+    ICurrentUser currentUser,
+    TimeProvider timeProvider)
+{
+    private const string SystemAdministratorRole = "System Administrator";
+    private const string BranchManagerRole = "Branch Manager";
+    private const string SalesRepresentativeRole = "Sales Representative";
+    private const string FieldTechnicianRole = "Field Technician";
+
+    public async Task<DashboardMetrics> GetAsync(
+        Guid? branchId,
+        CancellationToken cancellationToken = default)
+    {
+        if (currentUser.Role != SystemAdministratorRole && !branchId.HasValue)
+        {
+            throw new UnauthorizedAccessException("A branch scope is required for this dashboard.");
+        }
+
+        DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
+        DateTime utcToday = utcNow.Date;
+        DateTime utcMonthStart = new(utcNow.Year, utcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime utcNextMonthStart = utcMonthStart.AddMonths(1);
+
+        IQueryable<SalesOpportunity> sales = ScopeSales(dbContext.SalesOpportunities.AsNoTracking(), branchId);
+        var salesCounts = await sales
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                OpenOpportunities = group.Count(opportunity =>
+                    opportunity.Status != SalesOpportunityStatus.Won &&
+                    opportunity.Status != SalesOpportunityStatus.Lost),
+                ProposalsDue = group.Count(opportunity =>
+                    opportunity.Status == SalesOpportunityStatus.Proposed &&
+                    opportunity.ExpectedCloseDate.HasValue &&
+                    opportunity.ExpectedCloseDate.Value <= utcToday)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        IQueryable<WorkOrder> work = ScopeWork(dbContext.WorkOrders.AsNoTracking(), branchId);
+        var workCounts = await work
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                ScheduledWork = group.Count(workOrder => workOrder.Status == WorkOrderStatus.Scheduled),
+                WorkInProgress = group.Count(workOrder => workOrder.Status == WorkOrderStatus.InProgress),
+                OverdueWork = group.Count(workOrder =>
+                    (workOrder.Status == WorkOrderStatus.Scheduled || workOrder.Status == WorkOrderStatus.InProgress) &&
+                    workOrder.ScheduledStartUtc.HasValue &&
+                    workOrder.ScheduledStartUtc.Value < utcNow),
+                CompletionsThisMonth = group.Count(workOrder => workOrder.Events.Any(workEvent =>
+                    workEvent.EventType == WorkEventType.Completion &&
+                    workEvent.OccurredAtUtc >= utcMonthStart &&
+                    workEvent.OccurredAtUtc < utcNextMonthStart))
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return new DashboardMetrics(
+            salesCounts?.OpenOpportunities ?? 0,
+            salesCounts?.ProposalsDue ?? 0,
+            workCounts?.ScheduledWork ?? 0,
+            workCounts?.WorkInProgress ?? 0,
+            workCounts?.OverdueWork ?? 0,
+            workCounts?.CompletionsThisMonth ?? 0,
+            utcNow);
+    }
+
+    private IQueryable<SalesOpportunity> ScopeSales(IQueryable<SalesOpportunity> query, Guid? branchId)
+    {
+        if (branchId.HasValue)
+        {
+            query = query.Where(opportunity => opportunity.BranchId == branchId.Value);
+        }
+
+        return currentUser.Role switch
+        {
+            SystemAdministratorRole or BranchManagerRole => query,
+            SalesRepresentativeRole => query.Where(opportunity => opportunity.OwnerUserId == currentUser.UserId),
+            FieldTechnicianRole => query.Where(opportunity => opportunity.AssignedUserId == currentUser.UserId),
+            _ => throw new UnauthorizedAccessException("The current role cannot view a dashboard.")
+        };
+    }
+
+    private IQueryable<WorkOrder> ScopeWork(IQueryable<WorkOrder> query, Guid? branchId)
+    {
+        if (branchId.HasValue)
+        {
+            query = query.Where(workOrder => workOrder.BranchId == branchId.Value);
+        }
+
+        return currentUser.Role switch
+        {
+            SystemAdministratorRole or BranchManagerRole => query,
+            SalesRepresentativeRole => query.Where(workOrder =>
+                workOrder.SalesOpportunityId.HasValue &&
+                dbContext.SalesOpportunities.Any(opportunity =>
+                    opportunity.Id == workOrder.SalesOpportunityId.Value &&
+                    opportunity.OwnerUserId == currentUser.UserId)),
+            FieldTechnicianRole => query.Where(workOrder => workOrder.AssignedUserId == currentUser.UserId),
+            _ => throw new UnauthorizedAccessException("The current role cannot view a dashboard.")
+        };
+    }
+}
+
+public sealed record DashboardMetrics(
+    int OpenOpportunities,
+    int ProposalsDue,
+    int ScheduledWork,
+    int WorkInProgress,
+    int OverdueWork,
+    int CompletionsThisMonth,
+    DateTime AsOfUtc)
+{
+    public bool IsEmpty =>
+        OpenOpportunities == 0 &&
+        ProposalsDue == 0 &&
+        ScheduledWork == 0 &&
+        WorkInProgress == 0 &&
+        OverdueWork == 0 &&
+        CompletionsThisMonth == 0;
+}

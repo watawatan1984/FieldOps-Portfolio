@@ -1,8 +1,23 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@model FieldOps.Features.Dashboard.DashboardMetrics
+@{
+    ViewData["Title"] = "Dashboard";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<header class="mb-4">
+    <h1>Dashboard</h1>
+    <p class="text-muted mb-0">Operational position as of @Model.AsOfUtc.ToString("yyyy-MM-dd HH:mm 'UTC'").</p>
+</header>
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 g-3" aria-label="Dashboard metrics">
+    <div class="col"><section class="card h-100" data-metric="open-opportunities" data-value="@Model.OpenOpportunities"><div class="card-body"><h2 class="h6">Open opportunities</h2><p class="display-6 mb-1">@Model.OpenOpportunities</p><p class="small text-muted mb-0">All opportunities not won or lost, including on hold.</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="proposals-due" data-value="@Model.ProposalsDue"><div class="card-body"><h2 class="h6">Proposals due</h2><p class="display-6 mb-1">@Model.ProposalsDue</p><p class="small text-muted mb-0">Proposed opportunities with an expected close date on or before the current UTC date.</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="scheduled-work" data-value="@Model.ScheduledWork"><div class="card-body"><h2 class="h6">Scheduled work</h2><p class="display-6 mb-1">@Model.ScheduledWork</p><p class="small text-muted mb-0">Work orders currently in Scheduled status.</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="work-in-progress" data-value="@Model.WorkInProgress"><div class="card-body"><h2 class="h6">Work in progress</h2><p class="display-6 mb-1">@Model.WorkInProgress</p><p class="small text-muted mb-0">Work orders currently in In Progress status.</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="overdue-work" data-value="@Model.OverdueWork"><div class="card-body"><h2 class="h6">Overdue work</h2><p class="display-6 mb-1">@Model.OverdueWork</p><p class="small text-muted mb-0">Scheduled or in-progress work whose scheduled UTC start is before now.</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="completions-this-month" data-value="@Model.CompletionsThisMonth"><div class="card-body"><h2 class="h6">Completions this month</h2><p class="display-6 mb-1">@Model.CompletionsThisMonth</p><p class="small text-muted mb-0">Work with a completion event in the current UTC calendar month.</p></div></section></div>
 </div>
+
+@if (Model.IsEmpty)
+{
+    <p class="alert alert-info mt-4" role="status">No dashboard activity is available in your current scope.</p>
+}

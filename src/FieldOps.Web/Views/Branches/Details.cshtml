@@ -1,0 +1,19 @@
+@model FieldOps.Features.Dashboard.BranchProgressItem
+@{
+    ViewData["Title"] = Model.BranchName;
+}
+
+<h1>@Model.BranchName</h1>
+<p class="text-muted">Branch detail as of @Model.Metrics.AsOfUtc.ToString("yyyy-MM-dd HH:mm 'UTC'").</p>
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 g-3" aria-label="Branch metrics">
+    <div class="col"><section class="card h-100" data-metric="open-opportunities" data-value="@Model.Metrics.OpenOpportunities"><div class="card-body"><h2 class="h6">Open opportunities</h2><p class="display-6">@Model.Metrics.OpenOpportunities</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="proposals-due" data-value="@Model.Metrics.ProposalsDue"><div class="card-body"><h2 class="h6">Proposals due</h2><p class="display-6">@Model.Metrics.ProposalsDue</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="scheduled-work" data-value="@Model.Metrics.ScheduledWork"><div class="card-body"><h2 class="h6">Scheduled work</h2><p class="display-6">@Model.Metrics.ScheduledWork</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="work-in-progress" data-value="@Model.Metrics.WorkInProgress"><div class="card-body"><h2 class="h6">Work in progress</h2><p class="display-6">@Model.Metrics.WorkInProgress</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="overdue-work" data-value="@Model.Metrics.OverdueWork"><div class="card-body"><h2 class="h6">Overdue work</h2><p class="display-6">@Model.Metrics.OverdueWork</p></div></section></div>
+    <div class="col"><section class="card h-100" data-metric="completions-this-month" data-value="@Model.Metrics.CompletionsThisMonth"><div class="card-body"><h2 class="h6">Completions this month</h2><p class="display-6">@Model.Metrics.CompletionsThisMonth</p></div></section></div>
+</div>
+@if (Model.Metrics.IsEmpty)
+{
+    <p class="alert alert-info mt-4" role="status">No dashboard activity is available for this branch.</p>
+}

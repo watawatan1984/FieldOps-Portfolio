@@ -31,4 +31,22 @@ public sealed class PostgresFieldOpsUserDirectory(FieldOpsDbContext dbContext) :
             .Select(user => new FieldOpsUserOption(user.Id, user.DisplayName))
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyDictionary<string, string>> GetDisplayNamesAsync(
+        IEnumerable<string> userIds,
+        CancellationToken cancellationToken = default)
+    {
+        string[] ids = userIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (ids.Length == 0)
+        {
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        return await dbContext.Users.AsNoTracking()
+            .Where(user => ids.Contains(user.Id))
+            .ToDictionaryAsync(user => user.Id, user => user.DisplayName, StringComparer.Ordinal, cancellationToken);
+    }
 }

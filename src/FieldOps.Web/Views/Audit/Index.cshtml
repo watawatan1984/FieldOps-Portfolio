@@ -1,0 +1,35 @@
+@model FieldOps.Features.Administration.AuditPage
+@{
+    ViewData["Title"] = "Audit";
+    string PageUrl(int page) => Url.Action("Index", "Audit", new { Model.BranchId, page, pageSize = Model.PageSize })!;
+}
+
+<h1>Audit</h1>
+<p class="text-muted">Audit entries show operational field names only. Identity identifiers and payload values are not displayed.</p>
+<div data-page-size="@Model.PageSize">
+@if (Model.Items.Count == 0)
+{
+    <p class="alert alert-info" role="status">No audit entries are available in your current scope.</p>
+}
+else
+{
+    <p>@Model.TotalCount audit entr@(Model.TotalCount == 1 ? "y" : "ies")</p>
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th scope="col">Occurred (UTC)</th><th scope="col">Branch</th><th scope="col">Area</th><th scope="col">Action</th><th scope="col">Outcome</th><th scope="col">Changed fields</th><th scope="col">Actor</th></tr></thead><tbody>
+    @foreach (var entry in Model.Items)
+    {
+        <tr data-audit-action="@entry.Action"><td>@entry.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td><td>@entry.BranchName</td><td>@entry.AggregateType</td><td>@entry.Action</td><td>@entry.Outcome</td><td>@entry.ChangedFields</td><td>@entry.ActorDisplayName</td></tr>
+    }
+    </tbody></table></div>
+}
+</div>
+@if (Model.TotalPages > 1)
+{
+    int firstPage = Math.Max(1, Model.Page - 2);
+    int lastPage = Math.Min(Model.TotalPages, Model.Page + 2);
+    <nav aria-label="Audit pages"><ul class="pagination">
+    @for (int page = firstPage; page <= lastPage; page++)
+    {
+        <li class="page-item @(page == Model.Page ? "active" : null)"><a class="page-link" href="@PageUrl(page)" aria-current="@(page == Model.Page ? "page" : null)">@(page)</a></li>
+    }
+    </ul></nav>
+}

@@ -18,7 +18,70 @@ html {
 }
 
 body {
-  margin-bottom: 60px;
+  min-height: 100vh;
+  background: #f6f8fb;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 1040;
+}
+
+.app-shell {
+  min-height: calc(100vh - 122px);
+}
+
+.app-sidebar {
+  width: 17rem;
+  background: #fff;
+  border-right: 1px solid var(--bs-border-color);
+}
+
+.app-sidebar .offcanvas-body {
+  align-items: stretch;
+}
+
+.app-sidebar .nav-link {
+  color: #26374a;
+}
+
+.app-sidebar .nav-link.active {
+  background: #0b5ed7;
+  color: #fff;
+}
+
+.app-content {
+  min-width: 0;
+  padding: 1.5rem;
+}
+
+.app-user-summary {
+  line-height: 1.15;
+}
+
+@media (min-width: 992px) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: 17rem minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    position: sticky;
+    top: 65px;
+    height: calc(100vh - 65px);
+    visibility: visible !important;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .app-user-summary {
+    max-width: 9rem;
+  }
+
+  .app-content {
+    padding: 1rem;
+  }
 }
 
 .form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {

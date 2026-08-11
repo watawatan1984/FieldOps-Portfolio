@@ -63,6 +63,14 @@ public sealed class DemoLoginController(IDataProtectionProvider dataProtectionPr
         return RedirectToAction("Index", "Home");
     }
 
+    [HttpPost("logout")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Logout([FromServices] SignInManager<ApplicationUser> signInManager)
+    {
+        await signInManager.SignOutAsync();
+        return RedirectToAction(nameof(Index));
+    }
+
     private DemoRoleCardViewModel CreateCard(string role, string displayName, string description) =>
         new(role, displayName, description, _roleProtector.Protect(role, RoleTokenLifetime));
 }

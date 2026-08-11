@@ -1,14 +1,24 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
+@using System.Security.Claims
+@using FieldOps.Infrastructure.Identity
 @using FieldOps.Web.Authorization
 @using Microsoft.AspNetCore.Authorization
 @inject IAuthorizationService AuthorizationService
 @{
-    bool canViewDashboard = (await AuthorizationService.AuthorizeAsync(User, Policies.ViewDashboard)).Succeeded;
-    bool canManageParties = (await AuthorizationService.AuthorizeAsync(User, Policies.ManageParties)).Succeeded;
-    bool canReadSales = (await AuthorizationService.AuthorizeAsync(User, Policies.ReadSales)).Succeeded;
-    bool canReadWorkOrders = (await AuthorizationService.AuthorizeAsync(User, Policies.ReadWorkOrders)).Succeeded;
-    bool canViewAudit = (await AuthorizationService.AuthorizeAsync(User, Policies.ViewAudit)).Succeeded;
-    bool canResetDemo = (await AuthorizationService.AuthorizeAsync(User, Policies.ResetDemo)).Succeeded;
+    bool authenticated = User.Identity?.IsAuthenticated == true;
+    bool canViewDashboard = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ViewDashboard)).Succeeded;
+    bool canManageParties = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ManageParties)).Succeeded;
+    bool canReadSales = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ReadSales)).Succeeded;
+    bool canReadWorkOrders = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ReadWorkOrders)).Succeeded;
+    bool canViewAudit = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ViewAudit)).Succeeded;
+    bool canResetDemo = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ResetDemo)).Succeeded;
+    bool canViewBranchProgress = User.IsInRole(DemoRoleNames.SystemAdministrator) || User.IsInRole(DemoRoleNames.BranchManager);
+    string controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
+    string userName = User.FindFirstValue(DemoUserClaimsPrincipalFactory.DisplayNameClaimType) ?? "Fictional user";
+    string userRole = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+    string userBranch = User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchNameClaimType) ?? "National";
+    string? branchId = User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType);
+    bool Active(string name) => string.Equals(controller, name, StringComparison.OrdinalIgnoreCase);
 }
 <html lang="en">
 <head>
@@ -21,67 +31,94 @@
     <link rel="stylesheet" href="~/FieldOps.Web.styles.css" asp-append-version="true" />
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">FieldOps Portal</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
+    <header class="app-header border-bottom bg-white">
+        <div class="container-fluid d-flex flex-wrap align-items-center gap-3 py-2">
+            @if (authenticated)
+            {
+                <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#primaryNavigation" aria-controls="primaryNavigation" aria-label="Open primary navigation">
+                    <span aria-hidden="true">☰</span>
                 </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        @if (canViewDashboard)
-                        {
-                            <li class="nav-item" data-policy="@Policies.ViewDashboard">
-                                <a class="nav-link text-dark" href="/">Dashboard</a>
-                            </li>
-                        }
-                        @if (canManageParties)
-                        {
-                            <li class="nav-item" data-policy="@Policies.ManageParties">
-                                <a class="nav-link text-dark" href="/parties">Parties</a>
-                            </li>
-                        }
-                        @if (canReadSales)
-                        {
-                            <li class="nav-item" data-policy="@Policies.ReadSales">
-                                <a class="nav-link text-dark" href="/sales">Sales</a>
-                            </li>
-                        }
-                        @if (canReadWorkOrders)
-                        {
-                            <li class="nav-item" data-policy="@Policies.ReadWorkOrders">
-                                <a class="nav-link text-dark" href="/work-orders">Work orders</a>
-                            </li>
-                        }
-                        @if (canViewAudit)
-                        {
-                            <li class="nav-item" data-policy="@Policies.ViewAudit">
-                                <a class="nav-link text-dark" href="/audit">Audit</a>
-                            </li>
-                        }
-                        @if (canResetDemo)
-                        {
-                            <li class="nav-item" data-policy="@Policies.ResetDemo">
-                                <a class="nav-link text-dark" href="/demo-reset">Reset demo</a>
-                            </li>
-                        }
-                    </ul>
+            }
+            <a class="navbar-brand fw-semibold me-auto" asp-controller="Home" asp-action="Index">FieldOps Portal</a>
+            @if (authenticated)
+            {
+                <div class="app-user-summary text-end">
+                    <span class="d-block fw-semibold" data-user-name="@userName">@userName</span>
+                    <span class="small text-muted"><span data-user-role="@userRole">@userRole</span> · <span data-user-branch="@userBranch">@userBranch</span></span>
                 </div>
-            </div>
-        </nav>
+                @if (canResetDemo)
+                {
+                    <span data-policy="@Policies.ResetDemo"><button type="button" class="btn btn-outline-secondary btn-sm" disabled aria-disabled="true" title="Available in the next implementation task">初期化</button></span>
+                }
+                <form method="post" asp-controller="DemoLogin" asp-action="Logout" class="mb-0">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
+                </form>
+            }
+        </div>
     </header>
-    <div class="container">
-        <main role="main" class="pb-3">
+    @if (authenticated)
+    {
+        <div class="app-shell">
+            <aside class="offcanvas-lg offcanvas-start app-sidebar" tabindex="-1" id="primaryNavigation" aria-labelledby="primaryNavigationLabel">
+                <div class="offcanvas-header border-bottom">
+                    <h2 class="offcanvas-title h5" id="primaryNavigationLabel">Navigation</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#primaryNavigation" aria-label="Close navigation"></button>
+                </div>
+                <div class="offcanvas-body p-3">
+                    <nav aria-label="Primary navigation">
+                        <ul class="nav nav-pills flex-column gap-1">
+                            @if (canViewDashboard)
+                            {
+                                <li class="nav-item" data-policy="@Policies.ViewDashboard"><a data-nav="dashboard" aria-current="@(Active("Home") ? "page" : null)" class="nav-link @(Active("Home") ? "active" : null)" asp-controller="Home" asp-action="Index">Dashboard</a></li>
+                            }
+                            @if (canManageParties)
+                            {
+                                <li class="nav-item" data-policy="@Policies.ManageParties"><a data-nav="customers" aria-current="@(Active("Customers") ? "page" : null)" class="nav-link @(Active("Customers") ? "active" : null)" asp-controller="Customers" asp-action="Index">Customers</a></li>
+                                <li class="nav-item"><a data-nav="business-partners" aria-current="@(Active("BusinessPartners") ? "page" : null)" class="nav-link @(Active("BusinessPartners") ? "active" : null)" asp-controller="BusinessPartners" asp-action="Index">Business partners</a></li>
+                            }
+                            @if (canReadSales)
+                            {
+                                <li class="nav-item" data-policy="@Policies.ReadSales"><a data-nav="sales" aria-current="@(Active("Sales") ? "page" : null)" class="nav-link @(Active("Sales") ? "active" : null)" asp-controller="Sales" asp-action="Index">Sales</a></li>
+                            }
+                            @if (canReadWorkOrders)
+                            {
+                                <li class="nav-item" data-policy="@Policies.ReadWorkOrders"><a data-nav="work-orders" aria-current="@(Active("WorkOrders") ? "page" : null)" class="nav-link @(Active("WorkOrders") ? "active" : null)" asp-controller="WorkOrders" asp-action="Index">Work orders</a></li>
+                                <li class="nav-item"><a data-nav="work-history" aria-current="@(Active("WorkHistory") ? "page" : null)" class="nav-link @(Active("WorkHistory") ? "active" : null)" asp-controller="WorkHistory" asp-action="Index">Work history</a></li>
+                            }
+                            @if (canViewBranchProgress)
+                            {
+                                <li class="nav-item">
+                                @if (User.IsInRole(DemoRoleNames.SystemAdministrator))
+                                {
+                                    <a data-nav="branches" aria-current="@(Active("Branches") ? "page" : null)" class="nav-link @(Active("Branches") ? "active" : null)" asp-controller="Branches" asp-action="Index">Branch progress</a>
+                                }
+                                else
+                                {
+                                    <a data-nav="branches" aria-current="@(Active("Branches") ? "page" : null)" class="nav-link @(Active("Branches") ? "active" : null)" asp-controller="Branches" asp-action="Details" asp-route-id="@branchId">Branch progress</a>
+                                }
+                                </li>
+                            }
+                            @if (canViewAudit)
+                            {
+                                <li class="nav-item" data-policy="@Policies.ViewAudit"><a data-nav="audit" aria-current="@(Active("Audit") ? "page" : null)" class="nav-link @(Active("Audit") ? "active" : null)" asp-controller="Audit" asp-action="Index">Audit</a></li>
+                            }
+                        </ul>
+                    </nav>
+                </div>
+            </aside>
+            <main role="main" class="app-content">
+                @RenderBody()
+            </main>
+        </div>
+    }
+    else
+    {
+        <main role="main" class="container py-4">
             @RenderBody()
         </main>
-    </div>
-
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2026 - FieldOps Portal - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
-        </div>
+    }
+    <footer class="border-top text-muted py-3">
+        <div class="container-fluid">&copy; 2026 - FieldOps Portal - Fictional demonstration data only</div>
     </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>

@@ -1,5 +1,7 @@
 using FieldOps.Domain.Common;
 using FieldOps.Features.Abstractions;
+using FieldOps.Features.Administration;
+using FieldOps.Features.Dashboard;
 using FieldOps.Features.Parties;
 using FieldOps.Features.Sales;
 using FieldOps.Features.Work;
@@ -29,6 +31,9 @@ builder.Logging.AddConsoleFormatter<RedactedJsonConsoleFormatter, ConsoleFormatt
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+builder.Services.AddScoped<DashboardQueries>();
+builder.Services.AddScoped<BranchProgressQueries>();
+builder.Services.AddScoped<AuditQueries>();
 builder.Services.AddScoped<PartyQueries>();
 builder.Services.AddScoped<PartyCommands>();
 builder.Services.AddScoped<SalesQueries>();

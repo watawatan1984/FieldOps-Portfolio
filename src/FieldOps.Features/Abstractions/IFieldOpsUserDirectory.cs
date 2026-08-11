@@ -8,4 +8,8 @@ public interface IFieldOpsUserDirectory
         Guid? branchId,
         string role,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyDictionary<string, string>> GetDisplayNamesAsync(
+        IEnumerable<string> userIds,
+        CancellationToken cancellationToken = default);
 }
