@@ -1,5 +1,6 @@
 using FieldOps.Domain.Entities;
 using FieldOps.Features.Abstractions;
+using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
 
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -13,6 +14,7 @@ public sealed class FieldOpsDbContext(DbContextOptions<FieldOpsDbContext> option
 {
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<Branch> Branches => Set<Branch>();
+    public DbSet<DemoResetExecution> DemoResetExecutions => Set<DemoResetExecution>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<SalesOpportunity> SalesOpportunities => Set<SalesOpportunity>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 
 using FieldOps.Domain.Entities;
+using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Persistence;
 
 using Microsoft.AspNetCore.Identity;
@@ -13,21 +14,9 @@ public sealed class DemoIdentitySeeder(
     RoleManager<IdentityRole> roleManager,
     UserManager<ApplicationUser> userManager)
 {
-    private const string CentralBranchName = "Fictional Central Service Branch";
-    private const string FieldBranchName = "Fictional Field Service Branch";
-
-    private static readonly IReadOnlyDictionary<string, DemoAccount> Accounts =
-        new Dictionary<string, DemoAccount>(StringComparer.Ordinal)
-        {
-            [DemoRoleNames.SystemAdministrator] = new("system.admin@fieldops.demo", "Alex Morgan", null),
-            [DemoRoleNames.BranchManager] = new("branch.manager@fieldops.demo", "Jordan Lee", CentralBranchName),
-            [DemoRoleNames.SalesRepresentative] = new("sales.rep@fieldops.demo", "Casey Rivera", CentralBranchName),
-            [DemoRoleNames.FieldTechnician] = new("field.tech@fieldops.demo", "Taylor Kim", FieldBranchName)
-        };
-
     public static bool TryGetUserName(string role, out string userName)
     {
-        if (Accounts.TryGetValue(role, out DemoAccount? account))
+        if (DemoDataManifest.UsersByRole.TryGetValue(role, out DemoUser? account))
         {
             userName = account.UserName;
             return true;
@@ -39,26 +28,33 @@ public sealed class DemoIdentitySeeder(
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        Dictionary<string, Branch> branches = await EnsureBranchesAsync(cancellationToken);
+        await EnsureBranchesAsync(cancellationToken);
 
         foreach (string role in DemoRoleNames.All)
         {
             if (!await roleManager.RoleExistsAsync(role))
             {
-                EnsureSucceeded(await roleManager.CreateAsync(new IdentityRole(role)));
+                EnsureSucceeded(await roleManager.CreateAsync(new IdentityRole(role)
+                {
+                    Id = DemoDataManifest.RoleIds[role],
+                    ConcurrencyStamp = $"role-{DemoDataManifest.RoleIds[role]}"
+                }));
             }
 
-            DemoAccount account = Accounts[role];
+            DemoUser account = DemoDataManifest.UsersByRole[role];
             ApplicationUser? user = await userManager.FindByNameAsync(account.UserName);
             if (user is null)
             {
                 user = new ApplicationUser
                 {
+                    Id = account.Id,
                     UserName = account.UserName,
                     Email = account.UserName,
                     EmailConfirmed = true,
                     DisplayName = account.DisplayName,
-                    BranchId = account.BranchName is null ? null : branches[account.BranchName].Id
+                    BranchId = account.BranchId,
+                    SecurityStamp = account.SecurityStamp,
+                    ConcurrencyStamp = account.ConcurrencyStamp
                 };
 
                 EnsureSucceeded(await userManager.CreateAsync(user, GenerateStrongPassword()));
@@ -71,22 +67,24 @@ public sealed class DemoIdentitySeeder(
         }
     }
 
-    private async Task<Dictionary<string, Branch>> EnsureBranchesAsync(CancellationToken cancellationToken)
+    private async Task EnsureBranchesAsync(CancellationToken cancellationToken)
     {
-        string[] names = [CentralBranchName, FieldBranchName];
+        DemoBranch[] startupBranches = DemoDataManifest.Branches.Take(2).ToArray();
+        string[] names = startupBranches.Select(branch => branch.Name).ToArray();
         List<Branch> existing = await dbContext.Branches
             .Where(branch => names.Contains(branch.Name))
             .ToListAsync(cancellationToken);
 
-        foreach (string name in names.Except(existing.Select(branch => branch.Name), StringComparer.Ordinal))
+        foreach (DemoBranch branch in startupBranches.Where(candidate =>
+            existing.All(current => current.Name != candidate.Name)))
         {
-            Branch branch = Branch.Create(name);
-            dbContext.Branches.Add(branch);
-            existing.Add(branch);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "Branches" ("Id", "Name", "CreatedAtUtc", "UpdatedAtUtc")
+                VALUES ({branch.Id}, {branch.Name}, {DemoDataManifest.EpochUtc}, {DemoDataManifest.EpochUtc})
+                """,
+                cancellationToken);
         }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return existing.ToDictionary(branch => branch.Name, StringComparer.Ordinal);
     }
 
     private static string GenerateStrongPassword() =>
@@ -100,6 +98,4 @@ public sealed class DemoIdentitySeeder(
                 $"Demo identity seeding failed: {string.Join("; ", result.Errors.Select(error => error.Code))}");
         }
     }
-
-    private sealed record DemoAccount(string UserName, string DisplayName, string? BranchName);
 }

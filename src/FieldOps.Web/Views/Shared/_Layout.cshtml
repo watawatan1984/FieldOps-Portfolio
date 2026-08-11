@@ -48,7 +48,7 @@
                 </div>
                 @if (canResetDemo)
                 {
-                    <span data-policy="@Policies.ResetDemo"><button type="button" class="btn btn-outline-secondary btn-sm" disabled aria-disabled="true" title="Available in the next implementation task">初期化</button></span>
+                    <span data-policy="@Policies.ResetDemo"><a asp-controller="Administration" asp-action="Reset" class="btn btn-outline-secondary btn-sm">初期化</a></span>
                 }
                 <form method="post" asp-controller="DemoLogin" asp-action="Logout" class="mb-0">
                     <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>

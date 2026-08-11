@@ -1,5 +1,7 @@
 using FieldOps.Features.Abstractions;
+using FieldOps.Features.Administration;
 using FieldOps.Infrastructure.Auditing;
+using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 
@@ -20,6 +22,9 @@ public static class DependencyInjection
             .AddClaimsPrincipalFactory<DemoUserClaimsPrincipalFactory>()
             .AddDefaultTokenProviders();
         services.AddScoped<DemoIdentitySeeder>();
+        services.AddScoped<DemoDataSeeder>();
+        services.AddScoped<IDemoResetService, DemoResetService>();
+        services.AddScoped<IDemoResetPhaseObserver, NullDemoResetPhaseObserver>();
         services.AddScoped<IFieldOpsDbContext>(provider => provider.GetRequiredService<FieldOpsDbContext>());
         services.AddScoped<IMutationExecutor, MutationExecutor>();
         services.AddScoped<IPartyNameLock, PostgresPartyNameLock>();

@@ -1,0 +1,47 @@
+@model FieldOps.Web.Controllers.DemoResetViewModel
+@{
+    ViewData["Title"] = "初期化";
+}
+
+<div class="container py-4">
+    <nav aria-label="Breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">初期化</li>
+        </ol>
+    </nav>
+    <h1>初期化</h1>
+    <p>デモデータを承認済みの固定データへ戻します。自動実行や定期実行は行いません。</p>
+
+    @if (Model.Result is not null)
+    {
+        <div class="alert alert-success" role="status">
+            初期化が完了しました。相関 ID: <code>@Model.Result.CorrelationId</code>
+        </div>
+    }
+
+    <form method="post" asp-controller="Administration" asp-action="Reset" data-demo-reset-form aria-busy="false">
+        <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+        <div class="alert alert-danger d-none" role="alert" tabindex="-1" data-demo-reset-error>
+            初期化に失敗しました。再試行しても解決しない場合は、相関 ID
+            <code data-demo-reset-correlation>不明</code> を管理担当者へ伝えてください。
+        </div>
+        <input asp-for="IdempotencyKey" type="hidden" />
+        <div class="mb-3">
+            <label asp-for="Confirmation" class="form-label">確認のため RESET と入力してください</label>
+            <input asp-for="Confirmation" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Confirmation" class="text-danger"></span>
+        </div>
+        <button type="submit" class="btn btn-danger" data-demo-reset-submit>初期化を実行</button>
+        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">キャンセル</a>
+    </form>
+</div>
+
+<div class="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 d-none align-items-center justify-content-center"
+     data-demo-reset-overlay role="status" aria-live="polite" aria-label="初期化処理中">
+    <div class="bg-white rounded shadow p-4">初期化しています…</div>
+</div>
+
+@section Scripts {
+    <script src="~/js/demo-reset.js" asp-append-version="true"></script>
+}

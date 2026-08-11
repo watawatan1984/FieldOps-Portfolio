@@ -218,11 +218,11 @@ public sealed class DashboardTests(PostgresFixture postgres)
             Assert.Contains($"data-user-name=\"{item.Name}\"", dashboard, StringComparison.Ordinal);
             Assert.Contains($"data-user-role=\"{item.Role}\"", dashboard, StringComparison.Ordinal);
             Assert.Contains($"data-user-branch=\"{item.Branch}\"", dashboard, StringComparison.Ordinal);
-            Assert.Equal(item.CanInitialize, dashboard.Contains(">初期化</button>", StringComparison.Ordinal));
+            Assert.Equal(item.CanInitialize, dashboard.Contains(">初期化</a>", StringComparison.Ordinal));
             if (item.CanInitialize)
             {
-                Assert.Contains("type=\"button\" class=\"btn btn-outline-secondary btn-sm\" disabled", dashboard, StringComparison.Ordinal);
-                Assert.DoesNotContain("href=\"/demo-reset\"", dashboard, StringComparison.Ordinal);
+                Assert.Contains("href=\"/administration/reset\"", dashboard, StringComparison.Ordinal);
+                Assert.DoesNotContain("aria-disabled=\"true\"", dashboard, StringComparison.Ordinal);
             }
             Assert.Contains("action=\"/demo-login/logout\"", dashboard, StringComparison.Ordinal);
             Assert.Contains("name=\"__RequestVerificationToken\"", dashboard, StringComparison.Ordinal);
