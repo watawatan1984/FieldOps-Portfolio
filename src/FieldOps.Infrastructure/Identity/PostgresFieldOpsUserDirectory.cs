@@ -9,7 +9,7 @@ namespace FieldOps.Infrastructure.Identity;
 public sealed class PostgresFieldOpsUserDirectory(FieldOpsDbContext dbContext) : IFieldOpsUserDirectory
 {
     public async Task<IReadOnlyList<FieldOpsUserOption>> GetUsersInRoleAsync(
-        Guid branchId,
+        Guid? branchId,
         string role,
         CancellationToken cancellationToken = default)
     {
@@ -24,7 +24,7 @@ public sealed class PostgresFieldOpsUserDirectory(FieldOpsDbContext dbContext) :
 
         return await dbContext.Users
             .AsNoTracking()
-            .Where(user => user.BranchId == branchId &&
+            .Where(user => (!branchId.HasValue || user.BranchId == branchId.Value) &&
                 dbContext.UserRoles.Any(userRole => userRole.UserId == user.Id && userRole.RoleId == roleId))
             .OrderBy(user => user.DisplayName)
             .ThenBy(user => user.Id)

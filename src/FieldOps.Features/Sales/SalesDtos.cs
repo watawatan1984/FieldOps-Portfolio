@@ -23,6 +23,7 @@ public sealed record SalesListItem(
     Guid Id,
     string PartyName,
     string SiteName,
+    string BranchName,
     string OwnerName,
     SalesOpportunityStatus Status,
     decimal? ProposedAmount,
@@ -36,7 +37,9 @@ public sealed record SalesIndexViewModel(
     int PageSize,
     int TotalCount,
     IReadOnlyList<SalesListItem> Items,
-    IReadOnlyList<FieldOpsUserOption> Owners)
+    IReadOnlyList<FieldOpsUserOption> Owners,
+    IReadOnlyList<SalesBranchOption> Branches,
+    bool CanSelectBranch)
 {
     public int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize));
 }
@@ -61,6 +64,7 @@ public sealed record SalesDetailsViewModel(
     DateTime? ExpectedCloseDate,
     uint Version,
     bool CanManage,
+    bool CanViewAudit,
     IReadOnlyList<SalesOpportunityStatus> AllowedTransitions,
     IReadOnlyList<SalesAuditSummary> AuditEntries);
 
@@ -103,6 +107,8 @@ public sealed class SalesTransitionInput
 }
 
 public sealed record SalesPartySiteOption(Guid PartyId, string PartyName, Guid SiteId, string SiteName);
+
+public sealed record SalesBranchOption(Guid Id, string Name);
 
 public sealed record SalesEditorOptions(
     string BranchName,

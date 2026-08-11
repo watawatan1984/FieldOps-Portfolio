@@ -74,6 +74,13 @@ public sealed class SalesCommands(
                     {
                         throw new UnauthorizedAccessException("A sales opportunity branch, party, and site cannot be changed.");
                     }
+                    if (opportunity.ProposedAmount is not null &&
+                        opportunity.ExpectedCloseDate is not null &&
+                        input.ProposedAmount is null &&
+                        input.ExpectedCloseDate is null)
+                    {
+                        throw new DomainException("An existing sales opportunity proposal cannot be cleared.");
+                    }
 
                     List<string> changedFields = [];
                     if (opportunity.OwnerUserId != input.OwnerUserId)

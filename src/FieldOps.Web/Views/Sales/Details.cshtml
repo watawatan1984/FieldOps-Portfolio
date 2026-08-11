@@ -14,5 +14,8 @@
         <section aria-labelledby="transitions-heading"><h2 id="transitions-heading" class="h4">Available actions</h2><div class="d-flex flex-wrap gap-2">@foreach (var status in Model.AllowedTransitions) { <form asp-action="Transition" asp-route-id="@Model.Id" method="post"><input name="Version" type="hidden" value="@Model.Version" /><input name="NextStatus" type="hidden" value="@status" /><button type="submit" class="btn btn-outline-primary">Move to @status</button></form> }</div></section>
     }
 }
-<hr />
-<section aria-labelledby="audit-heading"><h2 id="audit-heading" class="h4">Audit history</h2>@if (Model.AuditEntries.Count == 0) { <p>No audit entries recorded.</p> } else { <ol>@foreach (var audit in Model.AuditEntries) { <li><time datetime="@audit.OccurredAtUtc.ToString("O")">@audit.OccurredAtUtc.ToString("u")</time> — @audit.Action (@audit.Outcome) — fields: @(string.IsNullOrEmpty(audit.ChangedFields) ? "none" : audit.ChangedFields)</li> }</ol> }</section>
+@if (Model.CanViewAudit)
+{
+    <hr />
+    <section aria-labelledby="audit-heading"><h2 id="audit-heading" class="h4">Audit history</h2>@if (Model.AuditEntries.Count == 0) { <p>No audit entries recorded.</p> } else { <ol>@foreach (var audit in Model.AuditEntries) { <li><time datetime="@audit.OccurredAtUtc.ToString("O")">@audit.OccurredAtUtc.ToString("u")</time> — @audit.Action (@audit.Outcome) — fields: @(string.IsNullOrEmpty(audit.ChangedFields) ? "none" : audit.ChangedFields)</li> }</ol> }</section>
+}

@@ -86,7 +86,8 @@ public sealed class FieldOpsResourceAuthorizer(
                 user,
                 resource,
                 action,
-                action is BranchResourceAction.ViewDashboard or BranchResourceAction.ReadSales or BranchResourceAction.ManageSales);
+                action is BranchResourceAction.ViewDashboard or BranchResourceAction.ReadSales or
+                    BranchResourceAction.ManageSales or BranchResourceAction.ViewAudit);
     }
 
     public async Task<ResourceAuthorizationOutcome> AuthorizePartyAsync(

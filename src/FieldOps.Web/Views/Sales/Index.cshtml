@@ -3,7 +3,7 @@
 @using FieldOps.Infrastructure.Identity
 @{
     ViewData["Title"] = "Sales opportunities";
-    bool canCreate = !User.IsInRole(DemoRoleNames.FieldTechnician);
+    bool canCreate = !User.IsInRole(DemoRoleNames.FieldTechnician) && Model.Filters.BranchId != Guid.Empty;
 }
 
 <nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item active" aria-current="page">Sales</li></ol></nav>
@@ -13,7 +13,23 @@
 </div>
 
 <form method="get" class="row g-2 mb-4" role="search">
-    <input type="hidden" name="branchId" value="@Model.Filters.BranchId" />
+    @if (Model.CanSelectBranch)
+    {
+        <div class="col-md-4">
+            <label for="branch-filter" class="form-label">Branch</label>
+            <select id="branch-filter" class="form-select" name="branchId">
+                <option value="">All branches</option>
+                @foreach (var branch in Model.Branches)
+                {
+                    <option value="@branch.Id" selected="@(branch.Id == Model.Filters.BranchId)">@branch.Name</option>
+                }
+            </select>
+        </div>
+    }
+    else
+    {
+        <input type="hidden" name="branchId" value="@Model.Filters.BranchId" />
+    }
     <div class="col-md-4"><label for="sales-search" class="form-label">Party or site</label><input id="sales-search" class="form-control" name="search" value="@Model.Filters.Search" /></div>
     <div class="col-md-4"><label for="owner" class="form-label">Owner</label><select id="owner" class="form-select" name="ownerUserId"><option value="">All owners</option>@foreach (var owner in Model.Owners) { <option value="@owner.Id" selected="@(owner.Id == Model.Filters.OwnerUserId)">@owner.DisplayName</option> }</select></div>
     <div class="col-md-4"><label for="status" class="form-label">Status</label><select id="status" class="form-select" name="status"><option value="">All statuses</option>@foreach (SalesOpportunityStatus status in Enum.GetValues<SalesOpportunityStatus>()) { <option value="@status" selected="@(status == Model.Filters.Status)">@status</option> }</select></div>
@@ -30,10 +46,10 @@
 }
 else
 {
-    <div class="table-responsive"><table class="table align-middle"><thead><tr><th scope="col">Party</th><th scope="col">Site</th><th scope="col">Owner</th><th scope="col">Status</th><th scope="col">Amount</th><th scope="col">Expected close</th></tr></thead><tbody>
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th scope="col">Party</th><th scope="col">Site</th><th scope="col">Branch</th><th scope="col">Owner</th><th scope="col">Status</th><th scope="col">Amount</th><th scope="col">Expected close</th></tr></thead><tbody>
     @foreach (var opportunity in Model.Items)
     {
-        <tr><th scope="row"><a asp-action="Details" asp-route-id="@opportunity.Id">@opportunity.PartyName</a></th><td>@opportunity.SiteName</td><td>@opportunity.OwnerName</td><td>@opportunity.Status</td><td>@(opportunity.ProposedAmount?.ToString("C") ?? "Not set")</td><td>@(opportunity.ExpectedCloseDate?.ToString("yyyy-MM-dd") ?? "Not set")</td></tr>
+        <tr><th scope="row"><a asp-action="Details" asp-route-id="@opportunity.Id">@opportunity.PartyName</a></th><td>@opportunity.SiteName</td><td>@opportunity.BranchName</td><td>@opportunity.OwnerName</td><td>@opportunity.Status</td><td>@(opportunity.ProposedAmount?.ToString("C") ?? "Not set")</td><td>@(opportunity.ExpectedCloseDate?.ToString("yyyy-MM-dd") ?? "Not set")</td></tr>
     }
     </tbody></table></div>
 }

@@ -16,12 +16,13 @@ namespace FieldOps.Web.Controllers;
 public sealed class SalesController(
     SalesQueries queries,
     SalesCommands commands,
-    IFieldOpsResourceAuthorizer resourceAuthorizer) : Controller
+    IFieldOpsResourceAuthorizer resourceAuthorizer,
+    IAuthorizationService authorizationService) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index([FromQuery] SalesSearchRequest request, CancellationToken cancellationToken)
     {
-        if (request.BranchId == Guid.Empty)
+        if (request.BranchId == Guid.Empty && !User.IsInRole(DemoRoleNames.SystemAdministrator))
         {
             Guid branchId = Guid.TryParse(User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType), out Guid claimedBranchId)
                 ? claimedBranchId
@@ -41,8 +42,11 @@ public sealed class SalesController(
             });
         }
 
-        IActionResult? denied = await AuthorizeBranchAsync(request.BranchId, BranchResourceAction.ReadSales, cancellationToken);
-        if (denied is not null) return denied;
+        if (request.BranchId != Guid.Empty)
+        {
+            IActionResult? denied = await AuthorizeBranchAsync(request.BranchId, BranchResourceAction.ReadSales, cancellationToken);
+            if (denied is not null) return denied;
+        }
         try
         {
             return View(await queries.SearchAsync(request, cancellationToken));
@@ -102,7 +106,10 @@ public sealed class SalesController(
         if (denied is not null) return denied;
         bool canManage = await resourceAuthorizer.AuthorizeSalesOpportunityAsync(
             User, id, BranchResourceAction.ManageSales, cancellationToken) == ResourceAuthorizationOutcome.Allowed;
-        SalesDetailsViewModel? details = await queries.GetDetailsAsync(id, canManage, cancellationToken);
+        bool canViewAudit = (await authorizationService.AuthorizeAsync(User, Policies.ViewAudit)).Succeeded &&
+            await resourceAuthorizer.AuthorizeSalesOpportunityAsync(
+                User, id, BranchResourceAction.ViewAudit, cancellationToken) == ResourceAuthorizationOutcome.Allowed;
+        SalesDetailsViewModel? details = await queries.GetDetailsAsync(id, canManage, canViewAudit, cancellationToken);
         return details is null ? NotFound() : View(details);
     }
 
@@ -146,6 +153,11 @@ public sealed class SalesController(
         }
         catch (SalesConcurrencyException)
         {
+            IActionResult? currentDenied = await AuthorizeOpportunityAsync(
+                id,
+                BranchResourceAction.ManageSales,
+                cancellationToken);
+            if (currentDenied is not null) return currentDenied;
             SalesEditInput? latest = await queries.GetEditAsync(id, cancellationToken);
             if (latest is null) return NotFound();
             ModelState.Remove(nameof(input.Version));
@@ -219,7 +231,37 @@ public sealed class SalesController(
 
     private async Task<IActionResult> DetailsWithOutcomeAsync(Guid id, int statusCode, CancellationToken cancellationToken)
     {
-        SalesDetailsViewModel? details = await queries.GetDetailsAsync(id, true, cancellationToken);
+        ResourceAuthorizationOutcome readOutcome = await resourceAuthorizer.AuthorizeSalesOpportunityAsync(
+            User,
+            id,
+            BranchResourceAction.ReadSales,
+            cancellationToken);
+        if (readOutcome is not ResourceAuthorizationOutcome.Allowed)
+        {
+            return readOutcome is ResourceAuthorizationOutcome.NotFound ? NotFound() : Forbid();
+        }
+
+        bool canManage = await resourceAuthorizer.AuthorizeSalesOpportunityAsync(
+            User,
+            id,
+            BranchResourceAction.ManageSales,
+            cancellationToken) == ResourceAuthorizationOutcome.Allowed;
+        if (!canManage)
+        {
+            return Forbid();
+        }
+
+        bool canViewAudit = (await authorizationService.AuthorizeAsync(User, Policies.ViewAudit)).Succeeded &&
+            await resourceAuthorizer.AuthorizeSalesOpportunityAsync(
+                User,
+                id,
+                BranchResourceAction.ViewAudit,
+                cancellationToken) == ResourceAuthorizationOutcome.Allowed;
+        SalesDetailsViewModel? details = await queries.GetDetailsAsync(
+            id,
+            canManage,
+            canViewAudit,
+            cancellationToken);
         if (details is null) return NotFound();
         Response.StatusCode = statusCode;
         return View("Details", details);

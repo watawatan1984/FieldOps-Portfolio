@@ -18,6 +18,7 @@ public sealed class SalesQueries(
 {
     private const string SalesRepresentativeRole = "Sales Representative";
     private const string FieldTechnicianRole = "Field Technician";
+    private const string SystemAdministratorRole = "System Administrator";
     public const int DefaultPageSize = 25;
     public const int MaximumPageSize = 100;
 
@@ -33,9 +34,17 @@ public sealed class SalesQueries(
             throw new SalesPageOutOfRangeException();
         }
 
-        IQueryable<SalesOpportunity> opportunities = dbContext.SalesOpportunities
-            .AsNoTracking()
-            .Where(opportunity => opportunity.BranchId == request.BranchId);
+        bool canSelectBranch = currentUser.Role == SystemAdministratorRole;
+        if (request.BranchId == Guid.Empty && !canSelectBranch)
+        {
+            throw new UnauthorizedAccessException("A branch scope is required.");
+        }
+
+        IQueryable<SalesOpportunity> opportunities = dbContext.SalesOpportunities.AsNoTracking();
+        if (request.BranchId != Guid.Empty)
+        {
+            opportunities = opportunities.Where(opportunity => opportunity.BranchId == request.BranchId);
+        }
         if (currentUser.Role == SalesRepresentativeRole)
         {
             opportunities = opportunities.Where(opportunity => opportunity.OwnerUserId == currentUser.UserId);
@@ -93,6 +102,8 @@ public sealed class SalesQueries(
                     .Select(party => party.OrganizationName ?? party.LastName + ", " + party.FirstName).Single(),
                 dbContext.Parties.SelectMany(party => party.Sites)
                     .Where(site => site.Id == opportunity.SiteId).Select(site => site.Name).Single(),
+                dbContext.Branches.Where(branch => branch.Id == opportunity.BranchId)
+                    .Select(branch => branch.Name).Single(),
                 opportunity.OwnerUserId,
                 opportunity.Status,
                 opportunity.ProposedAmount,
@@ -100,13 +111,15 @@ public sealed class SalesQueries(
                 opportunity.Version))
             .ToListAsync(cancellationToken);
 
+        Guid? ownerBranchId = request.BranchId == Guid.Empty ? null : request.BranchId;
         IReadOnlyList<FieldOpsUserOption> owners = await userDirectory.GetUsersInRoleAsync(
-            request.BranchId, SalesRepresentativeRole, cancellationToken);
+            ownerBranchId, SalesRepresentativeRole, cancellationToken);
         Dictionary<string, string> ownerNames = owners.ToDictionary(owner => owner.Id, owner => owner.DisplayName);
         List<SalesListItem> items = rows.Select(row => new SalesListItem(
             row.Id,
             row.PartyName,
             row.SiteName,
+            row.BranchName,
             row.OwnerUserId is not null && ownerNames.TryGetValue(row.OwnerUserId, out string? ownerName)
                 ? ownerName
                 : row.OwnerUserId ?? "Unassigned",
@@ -114,8 +127,25 @@ public sealed class SalesQueries(
             row.ProposedAmount,
             row.ExpectedCloseDate,
             row.Version)).ToList();
-        string branchName = await GetBranchNameAsync(request.BranchId, cancellationToken);
-        return new SalesIndexViewModel(request, branchName, page, pageSize, totalCount, items, owners);
+        string branchName = request.BranchId == Guid.Empty
+            ? "All branches"
+            : await GetBranchNameAsync(request.BranchId, cancellationToken);
+        IReadOnlyList<SalesBranchOption> branches = canSelectBranch
+            ? await dbContext.Branches.AsNoTracking()
+                .OrderBy(branch => branch.Name)
+                .Select(branch => new SalesBranchOption(branch.Id, branch.Name))
+                .ToListAsync(cancellationToken)
+            : [];
+        return new SalesIndexViewModel(
+            request,
+            branchName,
+            page,
+            pageSize,
+            totalCount,
+            items,
+            owners,
+            branches,
+            canSelectBranch);
     }
 
     public Task<Guid> GetDefaultBranchIdAsync(CancellationToken cancellationToken = default) =>
@@ -166,6 +196,7 @@ public sealed class SalesQueries(
     public async Task<SalesDetailsViewModel?> GetDetailsAsync(
         Guid id,
         bool canManage,
+        bool canViewAudit,
         CancellationToken cancellationToken = default)
     {
         SalesOpportunity? opportunity = await dbContext.SalesOpportunities.AsNoTracking()
@@ -187,23 +218,26 @@ public sealed class SalesQueries(
         string? assignedName = opportunity.AssignedUserId is null
             ? null
             : technicians.FirstOrDefault(user => user.Id == opportunity.AssignedUserId)?.DisplayName ?? opportunity.AssignedUserId;
-        List<SalesAuditSummary> audit = await dbContext.AuditEntries.AsNoTracking()
-            .Where(entry => entry.AggregateType == nameof(SalesOpportunity) && entry.AggregateId == id)
-            .OrderBy(entry => entry.OccurredAtUtc)
-            .ThenBy(entry => entry.Id)
-            .Select(entry => new SalesAuditSummary(entry.OccurredAtUtc, entry.Action, entry.Outcome, entry.ChangeSummary, entry.ActorUserId))
-            .ToListAsync(cancellationToken);
+        IReadOnlyList<SalesAuditSummary> audit = canViewAudit
+            ? await dbContext.AuditEntries.AsNoTracking()
+                .Where(entry => entry.AggregateType == nameof(SalesOpportunity) && entry.AggregateId == id)
+                .OrderBy(entry => entry.OccurredAtUtc)
+                .ThenBy(entry => entry.Id)
+                .Select(entry => new SalesAuditSummary(entry.OccurredAtUtc, entry.Action, entry.Outcome, entry.ChangeSummary, entry.ActorUserId))
+                .ToListAsync(cancellationToken)
+            : [];
 
         return new SalesDetailsViewModel(
             opportunity.Id, opportunity.BranchId, branchName, partyName, siteName, ownerName, assignedName,
             opportunity.Status, opportunity.ProposedAmount, opportunity.ExpectedCloseDate, opportunity.Version,
-            canManage, opportunity.GetAllowedTransitions(), audit);
+            canManage, canViewAudit, opportunity.GetAllowedTransitions(), audit);
     }
 
     private sealed record SalesQueryRow(
         Guid Id,
         string PartyName,
         string SiteName,
+        string BranchName,
         string? OwnerUserId,
         SalesOpportunityStatus Status,
         decimal? ProposedAmount,
