@@ -6,10 +6,12 @@ using System.Text.RegularExpressions;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 using FieldOps.IntegrationTests.Infrastructure;
+using FieldOps.Web.Logging;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FieldOps.IntegrationTests.Diagnostics;
 
@@ -23,7 +25,11 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using FieldOpsWebApplicationFactory application = new(connectionString);
-        using HttpClient client = application.CreateClient();
+        using HttpClient client = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
         using HttpRequestMessage request = new(HttpMethod.Get, "/health/live");
         request.Headers.Add("X-Correlation-ID", correlationId);
 
@@ -41,7 +47,11 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using FieldOpsWebApplicationFactory application = new(connectionString);
-        using HttpClient client = application.CreateClient();
+        using HttpClient client = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
         using HttpRequestMessage request = new(HttpMethod.Get, "/health/live");
         request.Headers.TryAddWithoutValidation("X-Correlation-ID", invalidCorrelationId);
 
@@ -78,7 +88,7 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
         CapturedLog log = logs.Entries.Single(entry =>
             entry.Category == "FieldOps.Web.Middleware.RequestLoggingMiddleware" &&
             entry.Properties.TryGetValue("Route", out object? route) &&
-            Equals(route, "/diagnostics-probe/ok"));
+            Equals(route, "diagnostics-probe/ok"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("structured-log-test", log.Properties["CorrelationId"]);
@@ -97,6 +107,112 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
         Assert.DoesNotContain(telephone, serializedLog, StringComparison.Ordinal);
         Assert.DoesNotContain(Uri.EscapeDataString(email), serializedLog, StringComparison.Ordinal);
         Assert.DoesNotContain(Uri.EscapeDataString(telephone), serializedLog, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("/diagnostics-probe/path/private.person%40example.test", "diagnostics-probe/path/{value}")]
+    [InlineData("/private.person%40example.test/%2B81-90-1111-2222/742-Evergreen-Avenue", "unmatched")]
+    public async Task RequestLogUsesBoundedRouteIdentifierWithoutPathPii(string path, string expectedRoute)
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        CapturingLoggerProvider logs = new();
+        await using FieldOpsWebApplicationFactory application = new(connectionString, configureLogging: logging => logging.AddProvider(logs));
+        using HttpClient client = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+        using HttpRequestMessage request = new(HttpMethod.Get, path);
+        request.Headers.Add("X-Correlation-ID", "path-redaction-test");
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+        List<CapturedLog> requestLogs = logs.Entries.Where(entry =>
+            entry.Category == "FieldOps.Web.Middleware.RequestLoggingMiddleware" &&
+            entry.Properties.TryGetValue("CorrelationId", out object? correlationId) &&
+            Equals(correlationId, "path-redaction-test")).ToList();
+
+        Assert.NotEmpty(requestLogs);
+        Assert.All(requestLogs, requestLog => Assert.Equal(expectedRoute, requestLog.Properties["Route"]));
+        Assert.DoesNotContain("private.person", JsonSerializer.Serialize(logs.Entries), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("1111-2222", JsonSerializer.Serialize(logs.Entries), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Evergreen", JsonSerializer.Serialize(logs.Entries), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DatabasePhaseLogUsesTruthfulTimingsAndRequestScope()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        CapturingLoggerProvider logs = new();
+        await using FieldOpsWebApplicationFactory application = new(connectionString, configureLogging: logging => logging.AddProvider(logs));
+        using HttpClient client = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+        _ = await LoginAsAsync(client, DemoRoleNames.SystemAdministrator);
+        using HttpRequestMessage request = new(HttpMethod.Get, "/diagnostics-probe/mutation");
+        request.Headers.Add("X-Correlation-ID", "db-scope-test");
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+        CapturedLog databaseLog = logs.Entries.Single(entry =>
+            entry.Category == "FieldOps.Infrastructure.Persistence.MutationExecutor" &&
+            entry.Properties.TryGetValue("Operation", out object? operation) &&
+            Equals(operation, "diagnostics.request-mutation"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain("DbElapsedMs", databaseLog.Properties.Keys);
+        Assert.IsType<long>(databaseLog.Properties["MutationElapsedMs"]);
+        Assert.IsType<long>(databaseLog.Properties["LockWaitElapsedMs"]);
+        Assert.IsType<long>(databaseLog.Properties["SaveChangesElapsedMs"]);
+        Assert.IsType<long>(databaseLog.Properties["CommitElapsedMs"]);
+        Assert.Equal("db-scope-test", databaseLog.ScopeProperties["CorrelationId"]);
+        Assert.Matches("^[0-9a-f-]{32,36}$", Assert.IsType<string>(databaseLog.ScopeProperties["UserId"]));
+        Assert.Equal(DemoRoleNames.SystemAdministrator, databaseLog.ScopeProperties["Role"]);
+        Assert.Equal("diagnostics-probe/mutation", databaseLog.ScopeProperties["Route"]);
+    }
+
+    [Fact]
+    public void JsonFormatterIncludesSafeRequestScopeWithoutAmbientPathOrExceptionSecrets()
+    {
+        const string privatePath = "/private.person@example.test/742-Evergreen-Avenue";
+        LoggerExternalScopeProvider scopes = new();
+        using IDisposable ambientScope = scopes.Push(new Dictionary<string, object?>
+        {
+            ["RequestId"] = "request-42",
+            ["RequestPath"] = privatePath
+        });
+        using IDisposable safeScope = scopes.Push(new Dictionary<string, object?>
+        {
+            ["CorrelationId"] = "safe-json-test",
+            ["UserId"] = "user-42",
+            ["Role"] = "System Administrator",
+            ["Route"] = "diagnostics-probe/path/{value}"
+        });
+        IReadOnlyList<KeyValuePair<string, object?>> state =
+        [
+            new("Operation", "http.request"),
+            new("Outcome", "success"),
+            new("RequestPath", privatePath)
+        ];
+        LogEntry<IReadOnlyList<KeyValuePair<string, object?>>> entry = new(
+            LogLevel.Information,
+            "FieldOps.Web.Middleware.RequestLoggingMiddleware",
+            new EventId(42),
+            state,
+            new InvalidOperationException("formatter-exception-secret"),
+            static (_, _) => "Safe structured request event");
+        RedactedJsonConsoleFormatter formatter = new();
+        using StringWriter output = new();
+
+        formatter.Write(in entry, scopes, output);
+        using JsonDocument json = JsonDocument.Parse(output.ToString());
+
+        Assert.Equal("http.request", json.RootElement.GetProperty("Operation").GetString());
+        Assert.Equal("safe-json-test", json.RootElement.GetProperty("Scopes").GetProperty("CorrelationId").GetString());
+        Assert.Equal("diagnostics-probe/path/{value}", json.RootElement.GetProperty("Scopes").GetProperty("Route").GetString());
+        Assert.DoesNotContain(privatePath, output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestPath", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("formatter-exception-secret", output.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -127,7 +243,7 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
         CapturedLog failureLog = logs.Entries.Single(entry =>
             entry.Category == "FieldOps.Web.Middleware.RequestLoggingMiddleware" &&
             entry.Properties.TryGetValue("Route", out object? route) &&
-            Equals(route, "/diagnostics-probe/unhandled"));
+            Equals(route, "diagnostics-probe/unhandled"));
         Assert.Equal("generic-error-test", failureLog.Properties["CorrelationId"]);
         Assert.Equal(500, failureLog.Properties["StatusCode"]);
         Assert.Equal("failure", failureLog.Properties["Outcome"]);
@@ -135,6 +251,14 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
             "server-only-diagnostic-secret",
             JsonSerializer.Serialize(logs.Entries),
             StringComparison.Ordinal);
+        CapturedLog exceptionLog = logs.Entries.Single(entry =>
+            entry.Category == "FieldOps.Web.Diagnostics.SafeException" &&
+            entry.Properties.TryGetValue("ExceptionCategory", out object? category) &&
+            Equals(category, "unexpected"));
+        Assert.Equal("UnhandledException", exceptionLog.Properties["ExceptionType"]);
+        Assert.Equal("generic-error-test", exceptionLog.ScopeProperties["CorrelationId"]);
+        Assert.Equal("diagnostics-probe/unhandled", exceptionLog.ScopeProperties["Route"]);
+        Assert.DoesNotContain("server-only-diagnostic-secret", exceptionLog.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -183,15 +307,21 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
         return setCookie[(setCookie.IndexOf('=') + 1)..setCookie.IndexOf(';')];
     }
 
-    private sealed class CapturingLoggerProvider : ILoggerProvider
+    private sealed class CapturingLoggerProvider : ILoggerProvider, ISupportExternalScope
     {
+        private IExternalScopeProvider _scopeProvider = new LoggerExternalScopeProvider();
+
         public ConcurrentQueue<CapturedLog> Entries { get; } = new();
+
+        public IExternalScopeProvider ScopeProvider => _scopeProvider;
 
         public ILogger CreateLogger(string categoryName) => new CapturingLogger(this, categoryName);
 
         public void Dispose()
         {
         }
+
+        public void SetScopeProvider(IExternalScopeProvider scopeProvider) => _scopeProvider = scopeProvider;
 
         private sealed class CapturingLogger(CapturingLoggerProvider provider, string category) : ILogger
         {
@@ -215,7 +345,27 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
                     category,
                     formatter(state, exception),
                     properties.Where(item => item.Key != "{OriginalFormat}")
-                        .ToDictionary(item => item.Key, item => item.Value)));
+                        .ToDictionary(item => item.Key, item => item.Value),
+                    CaptureScopeProperties(provider.ScopeProvider)));
+            }
+
+            private static IReadOnlyDictionary<string, object?> CaptureScopeProperties(IExternalScopeProvider scopeProvider)
+            {
+                Dictionary<string, object?> captured = [];
+                scopeProvider.ForEachScope((scope, state) =>
+                {
+                    if (scope is IEnumerable<KeyValuePair<string, object?>> properties)
+                    {
+                        foreach (KeyValuePair<string, object?> property in properties)
+                        {
+                            if (property.Key is "CorrelationId" or "UserId" or "Role" or "Route")
+                            {
+                                state[property.Key] = property.Value;
+                            }
+                        }
+                    }
+                }, captured);
+                return captured;
             }
         }
     }
@@ -223,5 +373,6 @@ public sealed class DiagnosticsTests(PostgresFixture postgres)
     private sealed record CapturedLog(
         string Category,
         string Message,
-        IReadOnlyDictionary<string, object?> Properties);
+        IReadOnlyDictionary<string, object?> Properties,
+        IReadOnlyDictionary<string, object?> ScopeProperties);
 }

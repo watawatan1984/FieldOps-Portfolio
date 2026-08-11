@@ -4,6 +4,7 @@ using FieldOps.Infrastructure;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 using FieldOps.Web.Authorization;
+using FieldOps.Web.Logging;
 using FieldOps.Web.Middleware;
 using FieldOps.Web.Services;
 
@@ -12,11 +13,14 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging.Console;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
-builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
+builder.Logging.AddConsole(options => options.FormatterName = RedactedJsonConsoleFormatter.FormatterName);
+builder.Logging.AddConsoleFormatter<RedactedJsonConsoleFormatter, ConsoleFormatterOptions>(options =>
+    options.IncludeScopes = true);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
@@ -62,26 +66,6 @@ await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
-app.UseMiddleware<RequestLoggingMiddleware>();
-app.UseExceptionHandler(new ExceptionHandlerOptions
-{
-    AllowStatusCode404Response = true,
-    SuppressDiagnosticsCallback = _ => true,
-    ExceptionHandler = async context =>
-    {
-        Exception exception = context.Features.Get<IExceptionHandlerFeature>()?.Error
-            ?? new InvalidOperationException("An exception was not available to the handler.");
-        context.Response.StatusCode = exception switch
-        {
-            DomainException => StatusCodes.Status400BadRequest,
-            DbUpdateConcurrencyException => StatusCodes.Status409Conflict,
-            UnauthorizedAccessException => StatusCodes.Status403Forbidden,
-            KeyNotFoundException => StatusCodes.Status404NotFound,
-            _ => StatusCodes.Status500InternalServerError
-        };
-        await context.Response.WriteAsJsonAsync(new { correlationId = context.TraceIdentifier });
-    }
-});
 
 if (!app.Environment.IsDevelopment())
 {
@@ -92,6 +76,35 @@ app.UseHttpsRedirection();
 app.UseRouting();
 
 app.UseAuthentication();
+app.UseMiddleware<RequestLoggingMiddleware>();
+app.UseExceptionHandler(new ExceptionHandlerOptions
+{
+    AllowStatusCode404Response = true,
+    SuppressDiagnosticsCallback = _ => true,
+    ExceptionHandler = async context =>
+    {
+        Exception exception = context.Features.Get<IExceptionHandlerFeature>()?.Error
+            ?? new InvalidOperationException("An exception was not available to the handler.");
+        (int statusCode, string category, string safeType) = exception switch
+        {
+            DomainException => (StatusCodes.Status400BadRequest, "domain", nameof(DomainException)),
+            DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "concurrency", nameof(DbUpdateConcurrencyException)),
+            UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "authorization", nameof(UnauthorizedAccessException)),
+            KeyNotFoundException => (StatusCodes.Status404NotFound, "not_found", nameof(KeyNotFoundException)),
+            _ => (StatusCodes.Status500InternalServerError, "unexpected", "UnhandledException")
+        };
+        ILogger safeExceptionLogger = context.RequestServices
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("FieldOps.Web.Diagnostics.SafeException");
+        safeExceptionLogger.Log(
+            statusCode == StatusCodes.Status500InternalServerError ? LogLevel.Error : LogLevel.Warning,
+            "Request exception classified as {ExceptionCategory} with safe type {ExceptionType}",
+            category,
+            safeType);
+        context.Response.StatusCode = statusCode;
+        await context.Response.WriteAsJsonAsync(new { correlationId = context.TraceIdentifier });
+    }
+});
 app.UseAuthorization();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions

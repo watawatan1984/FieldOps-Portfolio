@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 using FieldOps.Domain.Entities;
 using FieldOps.Features.Abstractions;
 using FieldOps.Infrastructure.Auditing;
@@ -37,6 +39,7 @@ public sealed class MutationExecutorTests(PostgresFixture postgres)
         }
 
         TaskCompletionSource actionStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource mutationCancellation = new(TimeSpan.FromSeconds(20));
         Task<int> mutation = executor.ExecuteAsync(
             "create-test-branch",
             async cancellationToken =>
@@ -46,15 +49,49 @@ public sealed class MutationExecutorTests(PostgresFixture postgres)
                 dbContext.Branches.Add(Branch.Create("Fictional Lock Ordered Branch"));
                 actionStarted.SetResult();
                 return 17;
-            });
+            },
+            mutationCancellation.Token);
 
-        await WaitForAdvisoryLockWaitAsync(blocker, applicationName);
-        Assert.False(actionStarted.Task.IsCompleted);
+        Exception? observationFailure = null;
+        int mutationResult = 0;
+        try
+        {
+            await WaitForSharedAdvisoryLockWaitAsync(blocker);
+            Assert.False(actionStarted.Task.IsCompleted);
+        }
+        catch (Exception exception)
+        {
+            observationFailure = exception;
+        }
+        finally
+        {
+            await blockerTransaction.CommitAsync();
+            try
+            {
+                mutationResult = await mutation.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (Exception mutationFailure)
+            {
+                mutationCancellation.Cancel();
+                try
+                {
+                    await mutation.WaitAsync(TimeSpan.FromSeconds(10));
+                }
+                catch
+                {
+                    // The original mutation failure is rethrown after its task is observed.
+                }
 
-        await blockerTransaction.CommitAsync();
+                ExceptionDispatchInfo.Capture(mutationFailure).Throw();
+            }
+        }
 
-        Assert.Equal(17, await mutation);
-        await actionStarted.Task;
+        Assert.Equal(17, mutationResult);
+        Assert.True(actionStarted.Task.IsCompletedSuccessfully);
+        if (observationFailure is not null)
+        {
+            ExceptionDispatchInfo.Capture(observationFailure).Throw();
+        }
 
         await using FieldOpsDbContext assertContext = CreateContext(connectionString);
         Assert.True(await assertContext.Branches.AnyAsync(branch => branch.Name == "Fictional Lock Ordered Branch"));
@@ -86,7 +123,57 @@ public sealed class MutationExecutorTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task MutationLogReportsOperationOutcomeAndDatabaseElapsedMilliseconds()
+    public async Task CancellingAWaitingMutationCompletesBeforeContextDisposalWithoutStartingTheAction()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsDbContext dbContext = CreateContext(connectionString);
+        await dbContext.Database.MigrateAsync();
+        MutationExecutor executor = new(dbContext, NullLogger<MutationExecutor>.Instance);
+        await using NpgsqlConnection blocker = new(connectionString);
+        await blocker.OpenAsync();
+        await using NpgsqlTransaction blockerTransaction = await blocker.BeginTransactionAsync();
+        await using (NpgsqlCommand takeExclusiveLock = new("SELECT pg_advisory_xact_lock(4601101)", blocker, blockerTransaction))
+        {
+            await takeExclusiveLock.ExecuteNonQueryAsync();
+        }
+
+        bool actionStarted = false;
+        using CancellationTokenSource cancellation = new();
+        Task<int> mutation = executor.ExecuteAsync(
+            "cancel-waiting-mutation",
+            _ =>
+            {
+                actionStarted = true;
+                return Task.FromResult(1);
+            },
+            cancellation.Token);
+
+        try
+        {
+            await WaitForSharedAdvisoryLockWaitAsync(blocker);
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                mutation.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.False(actionStarted);
+            Assert.True(mutation.IsCompleted);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await blockerTransaction.RollbackAsync();
+            try
+            {
+                await mutation.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected cleanup path: observe cancellation before disposing the DbContext.
+            }
+        }
+    }
+
+    [Fact]
+    public async Task MutationLogReportsOperationOutcomeAndTruthfulPhaseElapsedMilliseconds()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using FieldOpsDbContext dbContext = CreateContext(connectionString);
@@ -99,7 +186,11 @@ public sealed class MutationExecutorTests(PostgresFixture postgres)
         IReadOnlyDictionary<string, object?> entry = Assert.Single(logger.Entries);
         Assert.Equal("diagnostic-db-operation", entry["Operation"]);
         Assert.Equal("success", entry["Outcome"]);
-        Assert.IsType<long>(entry["DbElapsedMs"]);
+        Assert.DoesNotContain("DbElapsedMs", entry.Keys);
+        Assert.IsType<long>(entry["MutationElapsedMs"]);
+        Assert.IsType<long>(entry["LockWaitElapsedMs"]);
+        Assert.IsType<long>(entry["SaveChangesElapsedMs"]);
+        Assert.IsType<long>(entry["CommitElapsedMs"]);
     }
 
     private static FieldOpsDbContext CreateContext(string connectionString)
@@ -131,7 +222,7 @@ public sealed class MutationExecutorTests(PostgresFixture postgres)
         return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
     }
 
-    private static async Task WaitForAdvisoryLockWaitAsync(NpgsqlConnection connection, string applicationName)
+    private static async Task WaitForSharedAdvisoryLockWaitAsync(NpgsqlConnection connection)
     {
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
         while (!timeout.IsCancellationRequested)
@@ -140,13 +231,14 @@ public sealed class MutationExecutorTests(PostgresFixture postgres)
                 """
                 SELECT EXISTS (
                     SELECT 1
-                    FROM pg_stat_activity
-                    WHERE application_name = @application_name
-                      AND wait_event_type = 'Lock'
-                      AND wait_event = 'advisory')
+                    FROM pg_locks
+                    WHERE locktype = 'advisory'
+                      AND mode = 'ShareLock'
+                      AND NOT granted
+                      AND classid = 0
+                      AND objid = 4601101)
                 """,
                 connection);
-            command.Parameters.AddWithValue("application_name", applicationName);
             if ((bool)(await command.ExecuteScalarAsync(timeout.Token) ?? false))
             {
                 return;
@@ -155,7 +247,7 @@ public sealed class MutationExecutorTests(PostgresFixture postgres)
             await Task.Delay(25, timeout.Token);
         }
 
-        throw new TimeoutException("The mutation connection never waited for the advisory lock.");
+        throw new TimeoutException("The mutation connection never exposed a waiting shared advisory lock.");
     }
 
     private sealed record TestCurrentUser(string UserId, string Role) : ICurrentUser;

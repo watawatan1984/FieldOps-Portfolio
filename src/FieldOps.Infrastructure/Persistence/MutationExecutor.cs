@@ -20,33 +20,50 @@ public sealed class MutationExecutor(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(operation);
         ArgumentNullException.ThrowIfNull(action);
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        Stopwatch mutationStopwatch = Stopwatch.StartNew();
+        long? lockWaitElapsedMs = null;
+        long? saveChangesElapsedMs = null;
+        long? commitElapsedMs = null;
 
         try
         {
             await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            Stopwatch phaseStopwatch = Stopwatch.StartNew();
             await dbContext.Database.ExecuteSqlRawAsync(
                 $"SELECT pg_advisory_xact_lock_shared({CoordinationLockKey})",
                 cancellationToken);
+            lockWaitElapsedMs = phaseStopwatch.ElapsedMilliseconds;
 
             TResult result = await action(cancellationToken);
+
+            phaseStopwatch.Restart();
             await dbContext.SaveChangesAsync(cancellationToken);
+            saveChangesElapsedMs = phaseStopwatch.ElapsedMilliseconds;
+
+            phaseStopwatch.Restart();
             await transaction.CommitAsync(cancellationToken);
+            commitElapsedMs = phaseStopwatch.ElapsedMilliseconds;
 
             logger.LogInformation(
-                "Database mutation {Operation} completed with {Outcome} in {DbElapsedMs} ms",
+                "Database mutation {Operation} completed with {Outcome} in {MutationElapsedMs} ms; lock wait {LockWaitElapsedMs} ms; save {SaveChangesElapsedMs} ms; commit {CommitElapsedMs} ms",
                 operation,
                 "success",
-                stopwatch.ElapsedMilliseconds);
+                mutationStopwatch.ElapsedMilliseconds,
+                lockWaitElapsedMs,
+                saveChangesElapsedMs,
+                commitElapsedMs);
             return result;
         }
         catch
         {
             logger.LogWarning(
-                "Database mutation {Operation} completed with {Outcome} in {DbElapsedMs} ms",
+                "Database mutation {Operation} completed with {Outcome} in {MutationElapsedMs} ms; lock wait {LockWaitElapsedMs} ms; save {SaveChangesElapsedMs} ms; commit {CommitElapsedMs} ms",
                 operation,
                 "failure",
-                stopwatch.ElapsedMilliseconds);
+                mutationStopwatch.ElapsedMilliseconds,
+                lockWaitElapsedMs,
+                saveChangesElapsedMs,
+                commitElapsedMs);
             throw;
         }
     }

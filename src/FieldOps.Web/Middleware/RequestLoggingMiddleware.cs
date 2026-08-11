@@ -11,6 +11,15 @@ public sealed class RequestLoggingMiddleware(
     public async Task InvokeAsync(HttpContext context, ICurrentUser currentUser)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
+        string route = GetSafeRouteIdentifier(context);
+        using IDisposable? scope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["CorrelationId"] = context.TraceIdentifier,
+            ["UserId"] = currentUser.UserId,
+            ["Role"] = currentUser.Role,
+            ["Route"] = route
+        });
+
         await next(context);
 
         int statusCode = context.Response.StatusCode;
@@ -21,8 +30,21 @@ public sealed class RequestLoggingMiddleware(
             context.TraceIdentifier,
             currentUser.UserId,
             currentUser.Role,
-            context.Request.Path.Value ?? "/",
+            route,
             statusCode,
             stopwatch.ElapsedMilliseconds);
+    }
+
+    private static string GetSafeRouteIdentifier(HttpContext context)
+    {
+        if (context.GetEndpoint() is not RouteEndpoint routeEndpoint)
+        {
+            return "unmatched";
+        }
+
+        string? routeTemplate = routeEndpoint.RoutePattern.RawText;
+        return !string.IsNullOrWhiteSpace(routeTemplate) && routeTemplate.Length <= 256
+            ? routeTemplate
+            : "matched";
     }
 }
