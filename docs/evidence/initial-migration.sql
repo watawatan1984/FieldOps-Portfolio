@@ -298,6 +298,7 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+
 START TRANSACTION;
 
 DO $EF$
@@ -339,6 +340,7 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+
 START TRANSACTION;
 
 DO $EF$
@@ -370,6 +372,7 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+
 START TRANSACTION;
 
 DO $EF$
@@ -542,6 +545,59 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811140552_AddDemoIdentity') THEN
     INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
     VALUES ('20260811140552_AddDemoIdentity', '10.0.10');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811144216_PersistResourceAssignments') THEN
+    ALTER TABLE "WorkOrders" ADD "AssignedUserId" character varying(450);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811144216_PersistResourceAssignments') THEN
+    ALTER TABLE "SalesOpportunities" ADD "AssignedUserId" character varying(450);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811144216_PersistResourceAssignments') THEN
+    CREATE INDEX "IX_WorkOrders_AssignedUserId" ON "WorkOrders" ("AssignedUserId");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811144216_PersistResourceAssignments') THEN
+    CREATE INDEX "IX_SalesOpportunities_AssignedUserId" ON "SalesOpportunities" ("AssignedUserId");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811144216_PersistResourceAssignments') THEN
+    ALTER TABLE "SalesOpportunities" ADD CONSTRAINT "FK_SalesOpportunities_AspNetUsers_AssignedUserId" FOREIGN KEY ("AssignedUserId") REFERENCES "AspNetUsers" ("Id") ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811144216_PersistResourceAssignments') THEN
+    ALTER TABLE "WorkOrders" ADD CONSTRAINT "FK_WorkOrders_AspNetUsers_AssignedUserId" FOREIGN KEY ("AssignedUserId") REFERENCES "AspNetUsers" ("Id") ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811144216_PersistResourceAssignments') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20260811144216_PersistResourceAssignments', '10.0.10');
     END IF;
 END $EF$;
 COMMIT;

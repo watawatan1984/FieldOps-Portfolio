@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 
+using FieldOps.Domain.Entities;
 using FieldOps.IntegrationTests.Infrastructure;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
@@ -28,7 +29,28 @@ public sealed class AuthorizationPolicyTests(PostgresFixture postgres)
         using HttpResponseMessage response = await client.GetAsync("/");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/demo-login", response.Headers.Location?.AbsolutePath);
+        Assert.Equal("/demo-login", response.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task UnauthenticatedUnadornedEndpointIsDeniedWhileLoginAndAssetsRemainPublic()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+        using HttpResponseMessage unadorned = await client.GetAsync("/authorization-probe/unadorned");
+        using HttpResponseMessage login = await client.GetAsync("/demo-login");
+        using HttpResponseMessage asset = await client.GetAsync("/css/site.css");
+
+        Assert.Equal(HttpStatusCode.Redirect, unadorned.StatusCode);
+        Assert.Equal("/demo-login", unadorned.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, asset.StatusCode);
     }
 
     [Fact]
@@ -185,26 +207,16 @@ public sealed class AuthorizationPolicyTests(PostgresFixture postgres)
         await using FieldOpsWebApplicationFactory application = new(connectionString);
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
-        Dictionary<string, ApplicationUser> users = await dbContext.Users
-            .ToDictionaryAsync(user => user.UserName!);
-        Guid centralBranchId = Assert.IsType<Guid>(users["branch.manager@fieldops.demo"].BranchId);
-        Guid fieldBranchId = Assert.IsType<Guid>(users["field.tech@fieldops.demo"].BranchId);
-        (string Role, BranchResourceAction Action, Guid BranchId, HttpStatusCode Expected)[] cases =
+        ResourceIds resources = await CreateAssignedResourcesAsync(dbContext);
+        (string Role, BranchResourceAction Action, string ResourcePath, HttpStatusCode Expected)[] cases =
         [
-            (DemoRoleNames.SystemAdministrator, BranchResourceAction.ViewAudit, fieldBranchId, HttpStatusCode.OK),
-            (DemoRoleNames.BranchManager, BranchResourceAction.ManageSales, centralBranchId, HttpStatusCode.OK),
-            (DemoRoleNames.BranchManager, BranchResourceAction.ViewAudit, fieldBranchId, HttpStatusCode.Forbidden),
-            (DemoRoleNames.SalesRepresentative, BranchResourceAction.ManageParties, centralBranchId, HttpStatusCode.OK),
-            (DemoRoleNames.SalesRepresentative, BranchResourceAction.ReadWorkOrders, centralBranchId, HttpStatusCode.OK),
-            (DemoRoleNames.SalesRepresentative, BranchResourceAction.UpdateWorkOrders, centralBranchId, HttpStatusCode.Forbidden),
-            (DemoRoleNames.FieldTechnician, BranchResourceAction.ViewDashboard, fieldBranchId, HttpStatusCode.OK),
-            (DemoRoleNames.FieldTechnician, BranchResourceAction.ReadSales, fieldBranchId, HttpStatusCode.OK),
-            (DemoRoleNames.FieldTechnician, BranchResourceAction.UpdateWorkOrders, fieldBranchId, HttpStatusCode.OK),
-            (DemoRoleNames.FieldTechnician, BranchResourceAction.ManageSales, fieldBranchId, HttpStatusCode.Forbidden),
-            (DemoRoleNames.FieldTechnician, BranchResourceAction.UpdateWorkOrders, centralBranchId, HttpStatusCode.Forbidden)
+            .. BuildResourceCases(DemoRoleNames.SystemAdministrator, resources, [true, true, true, true, true, true, true, true]),
+            .. BuildResourceCases(DemoRoleNames.BranchManager, resources, [true, true, true, true, true, true, true, true]),
+            .. BuildResourceCases(DemoRoleNames.SalesRepresentative, resources, [true, true, true, true, true, false, false, false]),
+            .. BuildResourceCases(DemoRoleNames.FieldTechnician, resources, [true, false, true, false, true, false, true, false])
         ];
 
-        foreach ((string role, BranchResourceAction action, Guid branchId, HttpStatusCode expected) in cases)
+        foreach ((string role, BranchResourceAction action, string resourcePath, HttpStatusCode expected) in cases)
         {
             using HttpClient client = application.CreateClient(new()
             {
@@ -213,12 +225,109 @@ public sealed class AuthorizationPolicyTests(PostgresFixture postgres)
             });
             await LoginAsAsync(client, role);
             using HttpResponseMessage response = await client.GetAsync(
-                $"/authorization-probe/resource/{action}/{branchId}");
+                $"/authorization-probe/{resourcePath}");
             Assert.True(
                 response.StatusCode == expected,
-                $"{role} requesting {action} for {branchId}: expected {(int)expected}, received {(int)response.StatusCode}.");
+                $"{role} requesting {action}: expected {(int)expected}, received {(int)response.StatusCode}.");
         }
+
+        using HttpClient technicianClient = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+        await LoginAsAsync(technicianClient, DemoRoleNames.FieldTechnician);
+        using HttpResponseMessage unassigned = await technicianClient.GetAsync(
+            $"/authorization-probe/work-order/{BranchResourceAction.UpdateWorkOrders}/{resources.UnassignedFieldWorkOrderId}");
+        Assert.Equal(HttpStatusCode.Forbidden, unassigned.StatusCode);
+
+        using HttpClient salesClient = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+        await LoginAsAsync(salesClient, DemoRoleNames.SalesRepresentative);
+        using HttpResponseMessage foreignSales = await salesClient.GetAsync(
+            $"/authorization-probe/sales-opportunity/{BranchResourceAction.ReadSales}/{resources.FieldSalesOpportunityId}");
+        using HttpResponseMessage missing = await salesClient.GetAsync(
+            $"/authorization-probe/sales-opportunity/{BranchResourceAction.ReadSales}/{Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.Forbidden, foreignSales.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
+
+    private static IEnumerable<(string Role, BranchResourceAction Action, string ResourcePath, HttpStatusCode Expected)> BuildResourceCases(
+        string role,
+        ResourceIds resources,
+        bool[] allowed)
+    {
+        bool technician = role == DemoRoleNames.FieldTechnician;
+        string branch = $"resource/{{0}}/{(technician ? resources.FieldBranchId : resources.CentralBranchId)}";
+        string sales = $"sales-opportunity/{{0}}/{(technician ? resources.FieldSalesOpportunityId : resources.CentralSalesOpportunityId)}";
+        string work = $"work-order/{{0}}/{(technician ? resources.FieldWorkOrderId : resources.CentralWorkOrderId)}";
+        (BranchResourceAction Action, string Path)[] cells =
+        [
+            (BranchResourceAction.ViewDashboard, work),
+            (BranchResourceAction.ManageParties, branch),
+            (BranchResourceAction.ReadSales, sales),
+            (BranchResourceAction.ManageSales, sales),
+            (BranchResourceAction.ReadWorkOrders, work),
+            (BranchResourceAction.ManageWorkOrders, work),
+            (BranchResourceAction.UpdateWorkOrders, work),
+            (BranchResourceAction.ViewAudit, branch)
+        ];
+
+        return cells.Select((cell, index) => (
+            role,
+            cell.Action,
+            string.Format(System.Globalization.CultureInfo.InvariantCulture, cell.Path, cell.Action),
+            allowed[index] ? HttpStatusCode.OK : HttpStatusCode.Forbidden));
+    }
+
+    private static async Task<ResourceIds> CreateAssignedResourcesAsync(FieldOpsDbContext dbContext)
+    {
+        ApplicationUser salesUser = await dbContext.Users.SingleAsync(user => user.UserName == "sales.rep@fieldops.demo");
+        ApplicationUser technician = await dbContext.Users.SingleAsync(user => user.UserName == "field.tech@fieldops.demo");
+        Guid centralBranchId = Assert.IsType<Guid>(salesUser.BranchId);
+        Guid fieldBranchId = Assert.IsType<Guid>(technician.BranchId);
+        Branch centralBranch = await dbContext.Branches.SingleAsync(branch => branch.Id == centralBranchId);
+        Branch fieldBranch = await dbContext.Branches.SingleAsync(branch => branch.Id == fieldBranchId);
+
+        Party centralParty = Party.CreateOrganization("Fictional Central Authorization Customer");
+        centralParty.AssignToBranch(centralBranch);
+        centralParty.AddSite(centralBranch, "Fictional Central Authorization Site");
+        SalesOpportunity centralSales = SalesOpportunity.Create(centralBranch, centralParty, centralParty.Sites.Single());
+        centralSales.AssignToUser(salesUser.Id);
+        WorkOrder centralWork = WorkOrder.Create(centralBranch, centralParty, centralParty.Sites.Single());
+
+        Party fieldParty = Party.CreateOrganization("Fictional Field Authorization Customer");
+        fieldParty.AssignToBranch(fieldBranch);
+        fieldParty.AddSite(fieldBranch, "Fictional Field Authorization Site");
+        SalesOpportunity fieldSales = SalesOpportunity.Create(fieldBranch, fieldParty, fieldParty.Sites.Single());
+        fieldSales.AssignToUser(technician.Id);
+        WorkOrder fieldWork = WorkOrder.Create(fieldBranch, fieldParty, fieldParty.Sites.Single());
+        fieldWork.AssignToUser(technician.Id);
+        WorkOrder unassignedFieldWork = WorkOrder.Create(fieldBranch, fieldParty, fieldParty.Sites.Single());
+
+        dbContext.AddRange(centralParty, centralSales, centralWork, fieldParty, fieldSales, fieldWork, unassignedFieldWork);
+        await dbContext.SaveChangesAsync();
+        return new ResourceIds(
+            centralBranchId,
+            fieldBranchId,
+            centralSales.Id,
+            fieldSales.Id,
+            centralWork.Id,
+            fieldWork.Id,
+            unassignedFieldWork.Id);
+    }
+
+    private sealed record ResourceIds(
+        Guid CentralBranchId,
+        Guid FieldBranchId,
+        Guid CentralSalesOpportunityId,
+        Guid FieldSalesOpportunityId,
+        Guid CentralWorkOrderId,
+        Guid FieldWorkOrderId,
+        Guid UnassignedFieldWorkOrderId);
 
     private static async Task LoginAsAsync(HttpClient client, string role)
     {

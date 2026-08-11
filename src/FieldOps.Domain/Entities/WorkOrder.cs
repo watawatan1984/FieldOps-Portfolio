@@ -30,6 +30,8 @@ public sealed class WorkOrder : Entity
 
     public Guid SiteId { get; }
 
+    public string? AssignedUserId { get; private set; }
+
     public WorkOrderStatus Status { get; private set; }
 
     public DateTime? ScheduledStartUtc { get; private set; }
@@ -37,6 +39,12 @@ public sealed class WorkOrder : Entity
     public IReadOnlyList<WorkEvent> Events => _events.AsReadOnly();
 
     public static WorkOrder Create(Branch branch, Party party, Site site) => new(branch, party, site);
+
+    public void AssignToUser(string applicationUserId)
+    {
+        AssignedUserId = RequiredText(applicationUserId, nameof(applicationUserId));
+        Touch();
+    }
 
     public void AddEvent(WorkEventType eventType, DateTime occurredAtUtc, string summary, string actorUserId)
     {

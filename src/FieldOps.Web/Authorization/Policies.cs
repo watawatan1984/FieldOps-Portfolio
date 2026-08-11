@@ -20,7 +20,11 @@ public static class Policies
     public static IServiceCollection AddFieldOpsAuthorization(this IServiceCollection services)
     {
         services.AddSingleton<IAuthorizationHandler, BranchAccessHandler>();
+        services.AddScoped<IFieldOpsResourceAuthorizer, FieldOpsResourceAuthorizer>();
         services.AddAuthorizationBuilder()
+            .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build())
             .AddPolicy(ViewDashboard, policy => policy.RequireRole(DemoRoleNames.All))
             .AddPolicy(ManageParties, policy => policy.RequireRole(
                 DemoRoleNames.SystemAdministrator,

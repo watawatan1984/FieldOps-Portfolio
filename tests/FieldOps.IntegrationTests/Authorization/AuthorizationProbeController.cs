@@ -1,10 +1,7 @@
 using FieldOps.Web.Authorization;
-using FieldOps.Infrastructure.Identity;
-using FieldOps.Infrastructure.Persistence;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace FieldOps.IntegrationTests.Authorization;
 
@@ -12,6 +9,9 @@ namespace FieldOps.IntegrationTests.Authorization;
 [Route("authorization-probe")]
 public sealed class AuthorizationProbeController : ControllerBase
 {
+    [HttpGet("unadorned")]
+    public IActionResult Unadorned() => Ok();
+
     [Authorize(Policy = Policies.ViewDashboard)]
     [HttpGet("dashboard")]
     public IActionResult Dashboard() => Ok();
@@ -53,23 +53,33 @@ public sealed class AuthorizationProbeController : ControllerBase
     public async Task<IActionResult> Resource(
         BranchResourceAction resourceAction,
         Guid branchId,
-        [FromServices] FieldOpsDbContext dbContext,
-        [FromServices] IAuthorizationService authorizationService)
+        [FromServices] IFieldOpsResourceAuthorizer resourceAuthorizer)
     {
-        Guid loadedBranchId = await dbContext.Branches
-            .Where(branch => branch.Id == branchId)
-            .Select(branch => branch.Id)
-            .SingleAsync();
-        DemoIdentitySeeder.TryGetUserName(DemoRoleNames.FieldTechnician, out string technicianUserName);
-        string? assignedUserId = await dbContext.Users
-            .Where(user => user.UserName == technicianUserName && user.BranchId == loadedBranchId)
-            .Select(user => user.Id)
-            .SingleOrDefaultAsync();
-        AuthorizationResult result = await authorizationService.AuthorizeAsync(
-            User,
-            new BranchAccessResource(loadedBranchId, assignedUserId),
-            new BranchAccessRequirement(resourceAction));
-
-        return result.Succeeded ? Ok() : Forbid();
+        ResourceAuthorizationOutcome result = await resourceAuthorizer.AuthorizeBranchAsync(User, branchId, resourceAction);
+        return ToActionResult(result);
     }
+
+    [Authorize]
+    [HttpGet("sales-opportunity/{resourceAction}/{id:guid}")]
+    public async Task<IActionResult> SalesOpportunityResource(
+        BranchResourceAction resourceAction,
+        Guid id,
+        [FromServices] IFieldOpsResourceAuthorizer resourceAuthorizer) =>
+        ToActionResult(await resourceAuthorizer.AuthorizeSalesOpportunityAsync(User, id, resourceAction));
+
+    [Authorize]
+    [HttpGet("work-order/{resourceAction}/{id:guid}")]
+    public async Task<IActionResult> WorkOrderResource(
+        BranchResourceAction resourceAction,
+        Guid id,
+        [FromServices] IFieldOpsResourceAuthorizer resourceAuthorizer) =>
+        ToActionResult(await resourceAuthorizer.AuthorizeWorkOrderAsync(User, id, resourceAction));
+
+    private IActionResult ToActionResult(ResourceAuthorizationOutcome outcome) => outcome switch
+    {
+        ResourceAuthorizationOutcome.Allowed => Ok(),
+        ResourceAuthorizationOutcome.Forbidden => Forbid(),
+        ResourceAuthorizationOutcome.NotFound => NotFound(),
+        _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+    };
 }

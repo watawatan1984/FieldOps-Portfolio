@@ -4,8 +4,10 @@ using System.Text.RegularExpressions;
 using FieldOps.IntegrationTests.Infrastructure;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
+using FieldOps.Web.Controllers;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -134,6 +136,47 @@ public sealed class DemoLoginTests(PostgresFixture postgres)
                 !value.StartsWith(".AspNetCore.Identity.Application=;", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task RoleChoiceTokenHasPurposeSpecificFiveMinuteLifetime()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = application.CreateClient(new()
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        string html = await client.GetStringAsync("/demo-login");
+        string token = GetRoleToken(html, DemoRoleNames.SystemAdministrator);
+        ITimeLimitedDataProtector protector = application.Services
+            .GetRequiredService<IDataProtectionProvider>()
+            .CreateProtector("FieldOps.DemoLogin.Role.v2")
+            .ToTimeLimitedDataProtector();
+
+        string role = protector.Unprotect(token, out DateTimeOffset expiration);
+
+        Assert.Equal(DemoRoleNames.SystemAdministrator, role);
+        Assert.InRange(expiration - DateTimeOffset.UtcNow, TimeSpan.FromMinutes(4), TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public async Task ExpiredAndWrongPurposeRoleTokensAreRejectedWithoutWaiting()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        IDataProtectionProvider provider = application.Services.GetRequiredService<IDataProtectionProvider>();
+        string expired = provider
+            .CreateProtector(DemoLoginController.RoleTokenPurpose)
+            .ToTimeLimitedDataProtector()
+            .Protect(DemoRoleNames.SystemAdministrator, DateTimeOffset.UtcNow.AddMinutes(-1));
+        string wrongPurpose = provider
+            .CreateProtector("FieldOps.DemoLogin.WrongPurpose")
+            .ToTimeLimitedDataProtector()
+            .Protect(DemoRoleNames.SystemAdministrator, TimeSpan.FromMinutes(5));
+
+        Assert.Equal(HttpStatusCode.BadRequest, await PostRoleTokenAsync(application, expired));
+        Assert.Equal(HttpStatusCode.BadRequest, await PostRoleTokenAsync(application, wrongPurpose));
+    }
+
     private static string GetRoleToken(string html, string role)
     {
         string token = Regex.Match(
@@ -142,5 +185,28 @@ public sealed class DemoLoginTests(PostgresFixture postgres)
             RegexOptions.Singleline).Groups[1].Value;
         Assert.NotEmpty(token);
         return token;
+    }
+
+    private static async Task<HttpStatusCode> PostRoleTokenAsync(
+        FieldOpsWebApplicationFactory application,
+        string roleToken)
+    {
+        using HttpClient client = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+        string html = await client.GetStringAsync("/demo-login");
+        string requestToken = Regex.Match(
+            html,
+            "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
+        using HttpResponseMessage response = await client.PostAsync(
+            "/demo-login",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["roleToken"] = roleToken,
+                ["__RequestVerificationToken"] = requestToken
+            }));
+        return response.StatusCode;
     }
 }

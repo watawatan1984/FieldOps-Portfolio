@@ -126,6 +126,17 @@ public sealed class SalesOpportunityTests
         Assert.Throws<DomainException>(() => SalesOpportunity.Create(branch, assignedParty, assignedParty.Sites.Single(site => site.BranchId == otherBranch.Id)));
     }
 
+    [Fact]
+    public void AssignToUser_RequiresAStableIdentityId()
+    {
+        SalesOpportunity opportunity = CreateAt(SalesOpportunityStatus.New);
+
+        opportunity.AssignToUser("sales-user-id");
+
+        Assert.Equal("sales-user-id", opportunity.AssignedUserId);
+        Assert.Throws<DomainException>(() => opportunity.AssignToUser(string.Empty));
+    }
+
     private static SalesOpportunity CreateAt(SalesOpportunityStatus status, bool includeWinRequirements = false)
     {
         Branch branch = Branch.Create("Harbor Office");

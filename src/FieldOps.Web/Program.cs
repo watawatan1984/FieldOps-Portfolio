@@ -24,6 +24,11 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.SlidingExpiration = true;
     options.Events = new CookieAuthenticationEvents
     {
+        OnRedirectToLogin = context =>
+        {
+            context.Response.Redirect(options.LoginPath);
+            return Task.CompletedTask;
+        },
         OnRedirectToAccessDenied = context =>
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -55,7 +60,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapStaticAssets();
+app.MapStaticAssets().AllowAnonymous();
 
 app.MapControllerRoute(
     name: "default",

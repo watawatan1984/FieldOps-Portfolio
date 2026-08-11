@@ -14,7 +14,12 @@ namespace FieldOps.Web.Controllers;
 [Route("demo-login")]
 public sealed class DemoLoginController(IDataProtectionProvider dataProtectionProvider) : Controller
 {
-    private readonly IDataProtector _roleProtector = dataProtectionProvider.CreateProtector("FieldOps.DemoLogin.Role.v1");
+    public const string RoleTokenPurpose = "FieldOps.DemoLogin.Role.v2";
+    public static readonly TimeSpan RoleTokenLifetime = TimeSpan.FromMinutes(5);
+
+    private readonly ITimeLimitedDataProtector _roleProtector = dataProtectionProvider
+        .CreateProtector(RoleTokenPurpose)
+        .ToTimeLimitedDataProtector();
 
     [HttpGet]
     public IActionResult Index() => View(new[]
@@ -59,5 +64,5 @@ public sealed class DemoLoginController(IDataProtectionProvider dataProtectionPr
     }
 
     private DemoRoleCardViewModel CreateCard(string role, string displayName, string description) =>
-        new(role, displayName, description, _roleProtector.Protect(role));
+        new(role, displayName, description, _roleProtector.Protect(role, RoleTokenLifetime));
 }

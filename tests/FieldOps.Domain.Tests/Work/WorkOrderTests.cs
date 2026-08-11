@@ -152,6 +152,17 @@ public sealed class WorkOrderTests
         Assert.Throws<DomainException>(() => workOrder.AddEvent((WorkEventType)999, Utc(11), "Arrival confirmed", "operator-42"));
     }
 
+    [Fact]
+    public void AssignToUser_RequiresAStableIdentityId()
+    {
+        WorkOrder workOrder = CreateAt(WorkOrderStatus.Planned);
+
+        workOrder.AssignToUser("technician-user-id");
+
+        Assert.Equal("technician-user-id", workOrder.AssignedUserId);
+        Assert.Throws<DomainException>(() => workOrder.AssignToUser(" "));
+    }
+
     private static WorkOrder CreateAt(WorkOrderStatus status, bool includeCompletionEvent = false)
     {
         Branch branch = Branch.Create("Harbor Office");

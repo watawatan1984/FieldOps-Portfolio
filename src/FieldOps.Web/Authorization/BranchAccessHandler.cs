@@ -13,15 +13,16 @@ public enum BranchResourceAction
     ManageSales,
     ReadSales,
     ReadWorkOrders,
+    ManageWorkOrders,
     UpdateWorkOrders,
     ViewAudit
 }
 
-public sealed record BranchAccessResource(Guid BranchId, string? AssignedUserId);
+internal sealed record BranchAccessResource(Guid BranchId, string? AssignedUserId);
 
-public sealed record BranchAccessRequirement(BranchResourceAction Action) : IAuthorizationRequirement;
+internal sealed record BranchAccessRequirement(BranchResourceAction Action) : IAuthorizationRequirement;
 
-public sealed class BranchAccessHandler
+internal sealed class BranchAccessHandler
     : AuthorizationHandler<BranchAccessRequirement, BranchAccessResource>
 {
     protected override Task HandleRequirementAsync(
@@ -61,10 +62,12 @@ public sealed class BranchAccessHandler
         action is BranchResourceAction.ViewDashboard or
             BranchResourceAction.ManageParties or
             BranchResourceAction.ManageSales or
+            BranchResourceAction.ReadSales or
             BranchResourceAction.ReadWorkOrders;
 
     private static bool IsTechnicianAction(BranchResourceAction action) =>
         action is BranchResourceAction.ViewDashboard or
             BranchResourceAction.ReadSales or
+            BranchResourceAction.ReadWorkOrders or
             BranchResourceAction.UpdateWorkOrders;
 }

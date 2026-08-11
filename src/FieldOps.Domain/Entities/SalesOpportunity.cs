@@ -28,6 +28,8 @@ public sealed class SalesOpportunity : Entity
 
     public Guid SiteId { get; }
 
+    public string? AssignedUserId { get; private set; }
+
     public SalesOpportunityStatus Status { get; private set; }
 
     public decimal? ProposedAmount { get; private set; }
@@ -35,6 +37,12 @@ public sealed class SalesOpportunity : Entity
     public DateTime? ExpectedCloseDate { get; private set; }
 
     public static SalesOpportunity Create(Branch branch, Party party, Site site) => new(branch, party, site);
+
+    public void AssignToUser(string applicationUserId)
+    {
+        AssignedUserId = RequiredText(applicationUserId, nameof(applicationUserId));
+        Touch();
+    }
 
     public void SetProposal(decimal amount, DateTime expectedCloseDate)
     {
