@@ -5,6 +5,10 @@ namespace FieldOps.Domain.Entities;
 
 public sealed class SalesOpportunity : Entity
 {
+    private SalesOpportunity()
+    {
+    }
+
     private SalesOpportunity(Branch branch, Party party, Site site)
     {
         ArgumentNullException.ThrowIfNull(branch);

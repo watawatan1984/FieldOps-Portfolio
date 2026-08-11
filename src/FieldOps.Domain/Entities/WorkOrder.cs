@@ -7,6 +7,10 @@ public sealed class WorkOrder : Entity
 {
     private readonly List<WorkEvent> _events = [];
 
+    private WorkOrder()
+    {
+    }
+
     private WorkOrder(Branch branch, Party party, Site site)
     {
         ArgumentNullException.ThrowIfNull(branch);
