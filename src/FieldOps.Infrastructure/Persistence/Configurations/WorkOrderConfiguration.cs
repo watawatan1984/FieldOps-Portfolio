@@ -14,6 +14,8 @@ internal sealed class WorkOrderConfiguration : EntityConfiguration<WorkOrder>
         builder.Property(workOrder => workOrder.ScheduledStartUtc).HasColumnType("timestamp with time zone");
         builder.Property(workOrder => workOrder.AssignedUserId).HasMaxLength(450);
         builder.HasIndex(workOrder => new { workOrder.BranchId, workOrder.Status, workOrder.ScheduledStartUtc });
+        builder.HasIndex(workOrder => new { workOrder.BranchId, workOrder.ScheduledStartUtc, workOrder.Id })
+            .IsDescending(false, true, false);
         builder.HasIndex(workOrder => new { workOrder.PartyId, workOrder.SiteId });
         builder.HasIndex(workOrder => workOrder.AssignedUserId);
         builder.HasIndex(workOrder => workOrder.SalesOpportunityId)

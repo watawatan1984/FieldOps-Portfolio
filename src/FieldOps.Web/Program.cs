@@ -35,6 +35,7 @@ builder.Services.AddScoped<SalesQueries>();
 builder.Services.AddScoped<SalesCommands>();
 builder.Services.AddScoped<WorkOrderCommands>();
 builder.Services.AddScoped<WorkOrderQueries>();
+builder.Services.AddScoped<WorkHistorySearch>();
 builder.Services.AddFieldOpsAuthorization();
 builder.Services.AddFieldOpsInfrastructure(
     builder.Configuration.GetConnectionString("FieldOps") ??
