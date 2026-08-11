@@ -1,0 +1,25 @@
+@model FieldOps.Features.Work.WorkOrderEditInput
+@using FieldOps.Features.Work
+@{
+    ViewData["Title"] = "Schedule work order";
+    WorkOrderEditorOptions options = (WorkOrderEditorOptions)ViewData["EditorOptions"]!;
+}
+<h1>Schedule work order</h1>
+<p>@options.PartyName · @options.SiteName · @options.BranchName</p>
+<div asp-validation-summary="All" class="text-danger" role="alert"></div>
+<form method="post">
+    <input asp-for="Id" type="hidden" />
+    <input asp-for="Version" type="hidden" />
+    <div class="mb-3">
+        <label asp-for="AssignedUserId" class="form-label"></label>
+        <select asp-for="AssignedUserId" class="form-select">
+            <option value="">Select technician</option>
+            @foreach (var technician in options.Technicians)
+            {
+                <option value="@technician.Id">@technician.DisplayName</option>
+            }
+        </select>
+    </div>
+    <div class="mb-3"><label asp-for="ScheduledStartUtc" class="form-label"></label><input asp-for="ScheduledStartUtc" type="text" class="form-control" placeholder="2026-09-20T01:30:00Z" /><div class="form-text">Enter an ISO 8601 UTC timestamp ending in Z.</div></div>
+    <button type="submit" class="btn btn-primary">Schedule and assign</button>
+</form>

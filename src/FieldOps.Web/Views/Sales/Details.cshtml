@@ -1,4 +1,8 @@
 @model FieldOps.Features.Sales.SalesDetailsViewModel
+@using FieldOps.Domain.Enums
+@using FieldOps.Web.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
 @{
     ViewData["Title"] = Model.PartyName;
 }
@@ -13,6 +17,14 @@
     {
         <section aria-labelledby="transitions-heading"><h2 id="transitions-heading" class="h4">Available actions</h2><div class="d-flex flex-wrap gap-2">@foreach (var status in Model.AllowedTransitions) { <form asp-action="Transition" asp-route-id="@Model.Id" method="post"><input name="Version" type="hidden" value="@Model.Version" /><input name="NextStatus" type="hidden" value="@status" /><button type="submit" class="btn btn-outline-primary">Move to @status</button></form> }</div></section>
     }
+}
+@if (Model.Status == SalesOpportunityStatus.Won &&
+    (await AuthorizationService.AuthorizeAsync(User, Policies.ManageWorkOrders)).Succeeded)
+{
+    <form action="/work-orders/from-opportunity/@Model.Id" method="post" class="mb-3">
+        @Html.AntiForgeryToken()
+        <button type="submit" class="btn btn-success">Create work order</button>
+    </form>
 }
 @if (Model.CanViewAudit)
 {

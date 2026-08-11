@@ -1,0 +1,17 @@
+@model FieldOps.Features.Work.WorkOrderIndexViewModel
+@{
+    ViewData["Title"] = "Work orders";
+}
+<h1>Work orders</h1>
+@if (Model.CanSelectBranch)
+{
+    <form method="get" class="row g-2 mb-3"><div class="col-auto"><label for="branchId" class="visually-hidden">Branch</label><select id="branchId" name="branchId" class="form-select"><option value="">All branches</option>@foreach (var branch in Model.Branches) { <option value="@branch.Id" selected="@(branch.Id == Model.Filters.BranchId)">@branch.Name</option> }</select></div><div class="col-auto"><button type="submit" class="btn btn-outline-primary">Apply</button></div></form>
+}
+@if (Model.Items.Count == 0)
+{
+    <p>No work orders in this scope.</p>
+}
+else
+{
+    <div class="table-responsive"><table class="table"><thead><tr><th>Customer</th><th>Site</th><th>Branch</th><th>Schedule</th><th>Technician</th><th>Status</th></tr></thead><tbody>@foreach (var item in Model.Items) { <tr><td><a href="/work-orders/@item.Id">@item.PartyName</a></td><td>@item.SiteName</td><td>@item.BranchName</td><td>@(item.ScheduledStartUtc?.ToString("u") ?? "Not scheduled")</td><td>@(item.AssignedUserName ?? "Not assigned")</td><td>@item.Status</td></tr> }</tbody></table></div>
+}

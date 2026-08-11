@@ -63,7 +63,8 @@ public sealed class FieldOpsResourceAuthorizer(
                 new BranchAccessResource(loadedBranchId.Value, null),
                 action,
                 action is BranchResourceAction.ViewDashboard or BranchResourceAction.ManageParties or
-                    BranchResourceAction.ReadSales or BranchResourceAction.ManageSales or BranchResourceAction.ViewAudit);
+                    BranchResourceAction.ReadSales or BranchResourceAction.ManageSales or
+                    BranchResourceAction.ReadWorkOrders or BranchResourceAction.ManageWorkOrders or BranchResourceAction.ViewAudit);
     }
 
     public async Task<ResourceAuthorizationOutcome> AuthorizeSalesOpportunityAsync(
@@ -87,7 +88,7 @@ public sealed class FieldOpsResourceAuthorizer(
                 resource,
                 action,
                 action is BranchResourceAction.ViewDashboard or BranchResourceAction.ReadSales or
-                    BranchResourceAction.ManageSales or BranchResourceAction.ViewAudit);
+                    BranchResourceAction.ManageSales or BranchResourceAction.ManageWorkOrders or BranchResourceAction.ViewAudit);
     }
 
     public async Task<ResourceAuthorizationOutcome> AuthorizePartyAsync(

@@ -2,6 +2,7 @@ using FieldOps.Domain.Common;
 using FieldOps.Features.Abstractions;
 using FieldOps.Features.Parties;
 using FieldOps.Features.Sales;
+using FieldOps.Features.Work;
 using FieldOps.Infrastructure;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
@@ -32,6 +33,8 @@ builder.Services.AddScoped<PartyQueries>();
 builder.Services.AddScoped<PartyCommands>();
 builder.Services.AddScoped<SalesQueries>();
 builder.Services.AddScoped<SalesCommands>();
+builder.Services.AddScoped<WorkOrderCommands>();
+builder.Services.AddScoped<WorkOrderQueries>();
 builder.Services.AddFieldOpsAuthorization();
 builder.Services.AddFieldOpsInfrastructure(
     builder.Configuration.GetConnectionString("FieldOps") ??

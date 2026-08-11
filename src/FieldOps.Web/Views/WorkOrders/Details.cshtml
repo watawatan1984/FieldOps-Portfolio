@@ -1,0 +1,31 @@
+@model FieldOps.Features.Work.WorkOrderDetailsViewModel
+@using FieldOps.Domain.Enums
+@{
+    ViewData["Title"] = Model.PartyName;
+}
+<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/work-orders?branchId=@Model.BranchId">Work orders</a></li><li class="breadcrumb-item active">@Model.PartyName</li></ol></nav>
+<div asp-validation-summary="All" class="text-danger" role="alert"></div>
+<div class="d-flex justify-content-between"><div><h1>@Model.PartyName</h1><p>@Model.SiteName · @Model.BranchName</p></div><span class="badge text-bg-primary">@Model.Status</span></div>
+<dl class="row"><dt class="col-sm-3">Scheduled start</dt><dd class="col-sm-9">@(Model.ScheduledStartUtc?.ToString("u") ?? "Not scheduled")</dd><dt class="col-sm-3">Assigned technician</dt><dd class="col-sm-9">@(Model.AssignedUserName ?? "Not assigned")</dd></dl>
+@if (Model.CanManage && Model.Status == WorkOrderStatus.Planned)
+{
+    <p><a class="btn btn-primary" href="/work-orders/@Model.Id/edit">Schedule and assign</a></p>
+}
+@if (Model.CanUpdate && Model.Status is not WorkOrderStatus.Completed and not WorkOrderStatus.Cancelled)
+{
+    <p><a class="btn btn-outline-primary" href="/work-orders/@Model.Id/events/add">Add work event</a></p>
+}
+@if (Model.CanCorrect && Model.Status == WorkOrderStatus.Completed)
+{
+    <p><a class="btn btn-outline-warning" href="/work-orders/@Model.Id/events/add">Add correction</a></p>
+}
+@if (Model.AllowedTransitions.Count > 0)
+{
+    <section><h2 class="h4">Available actions</h2>@foreach (var status in Model.AllowedTransitions) { <form action="/work-orders/@Model.Id/transition" method="post" class="d-inline"><input name="Version" id="Version" type="hidden" value="@Model.Version" /><input name="NextStatus" type="hidden" value="@status" />@Html.AntiForgeryToken()<button type="submit" class="btn btn-outline-primary">Move to @status</button></form> }</section>
+}
+else
+{
+    <form class="d-none">@Html.AntiForgeryToken()<input name="Version" id="Version" type="hidden" value="@Model.Version" /></form>
+}
+<hr />
+<section><h2 class="h4">Work history</h2>@if (Model.Events.Count == 0) { <p>No work events recorded.</p> } else { <ol>@foreach (var workEvent in Model.Events) { <li><time datetime="@workEvent.OccurredAtUtc.ToString("O")">@workEvent.OccurredAtUtc.ToString("u")</time> — @workEvent.EventType — @workEvent.Summary</li> }</ol> }</section>

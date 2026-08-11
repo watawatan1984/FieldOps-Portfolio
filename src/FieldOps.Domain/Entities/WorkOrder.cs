@@ -11,7 +11,7 @@ public sealed class WorkOrder : Entity
     {
     }
 
-    private WorkOrder(Branch branch, Party party, Site site)
+    private WorkOrder(Branch branch, Party party, Site site, Guid? salesOpportunityId)
     {
         ArgumentNullException.ThrowIfNull(branch);
         ArgumentNullException.ThrowIfNull(party);
@@ -21,6 +21,7 @@ public sealed class WorkOrder : Entity
         BranchId = branch.Id;
         PartyId = party.Id;
         SiteId = site.Id;
+        SalesOpportunityId = salesOpportunityId;
         Status = WorkOrderStatus.Planned;
     }
 
@@ -30,6 +31,8 @@ public sealed class WorkOrder : Entity
 
     public Guid SiteId { get; }
 
+    public Guid? SalesOpportunityId { get; }
+
     public string? AssignedUserId { get; private set; }
 
     public WorkOrderStatus Status { get; private set; }
@@ -38,7 +41,22 @@ public sealed class WorkOrder : Entity
 
     public IReadOnlyList<WorkEvent> Events => _events.AsReadOnly();
 
-    public static WorkOrder Create(Branch branch, Party party, Site site) => new(branch, party, site);
+    public static WorkOrder Create(Branch branch, Party party, Site site) => new(branch, party, site, null);
+
+    public static WorkOrder CreateFromOpportunity(SalesOpportunity opportunity, Branch branch, Party party, Site site)
+    {
+        ArgumentNullException.ThrowIfNull(opportunity);
+        if (opportunity.Status != SalesOpportunityStatus.Won)
+        {
+            throw new DomainException("A work order can be created only from a Won sales opportunity.");
+        }
+        if (opportunity.BranchId != branch.Id || opportunity.PartyId != party.Id || opportunity.SiteId != site.Id)
+        {
+            throw new DomainException("A work order must preserve its sales opportunity branch, party, and site.");
+        }
+
+        return new WorkOrder(branch, party, site, opportunity.Id);
+    }
 
     public void AssignToUser(string applicationUserId)
     {
@@ -89,6 +107,12 @@ public sealed class WorkOrder : Entity
         Status = next;
         Touch();
     }
+
+    public IReadOnlyList<WorkOrderStatus> GetAllowedTransitions() =>
+        Enum.GetValues<WorkOrderStatus>()
+            .Where(next => next != WorkOrderStatus.Scheduled && IsAllowedTransition(Status, next) &&
+                (next != WorkOrderStatus.Completed || _events.Any(workEvent => workEvent.EventType == WorkEventType.Completion)))
+            .ToArray();
 
     private static bool IsAllowedTransition(WorkOrderStatus current, WorkOrderStatus next) =>
         (current, next) switch

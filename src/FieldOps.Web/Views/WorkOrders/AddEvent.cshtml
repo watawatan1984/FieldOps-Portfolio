@@ -1,0 +1,15 @@
+@model FieldOps.Features.Work.WorkEventInput
+@using FieldOps.Domain.Enums
+@{
+    ViewData["Title"] = "Add work event";
+    IReadOnlyList<WorkEventType> eventTypes = (IReadOnlyList<WorkEventType>)ViewData["EventTypes"]!;
+}
+<h1>Add work event</h1>
+<div asp-validation-summary="All" class="text-danger" role="alert"></div>
+<form method="post">
+    <input asp-for="Version" type="hidden" />
+    <div class="mb-3"><label asp-for="EventType" class="form-label"></label><select asp-for="EventType" class="form-select">@foreach (var eventType in eventTypes) { <option value="@eventType">@eventType</option> }</select></div>
+    <div class="mb-3"><label asp-for="OccurredAtUtc" class="form-label"></label><input asp-for="OccurredAtUtc" type="text" class="form-control" placeholder="2026-09-20T03:15:00Z" /><div class="form-text">Enter an ISO 8601 UTC timestamp ending in Z.</div></div>
+    <div class="mb-3"><label asp-for="Summary" class="form-label"></label><textarea asp-for="Summary" class="form-control"></textarea></div>
+    <button type="submit" class="btn btn-primary">Append event</button>
+</form>

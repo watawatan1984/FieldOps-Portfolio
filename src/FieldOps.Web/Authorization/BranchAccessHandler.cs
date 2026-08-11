@@ -88,7 +88,7 @@ internal sealed class BranchAccessHandler
         string? userId) =>
         action switch
         {
-            BranchResourceAction.ReadSales when resource.Kind == BranchAccessResourceKind.Branch => true,
+            BranchResourceAction.ReadSales or BranchResourceAction.ReadWorkOrders when resource.Kind == BranchAccessResourceKind.Branch => true,
             BranchResourceAction.ViewDashboard or BranchResourceAction.ReadSales or BranchResourceAction.ReadWorkOrders or BranchResourceAction.UpdateWorkOrders =>
                 resource.AssignedUserId == userId,
             _ => false
