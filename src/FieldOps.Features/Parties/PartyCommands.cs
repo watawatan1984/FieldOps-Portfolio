@@ -20,10 +20,16 @@ public sealed class PartyRoleRemovalException : Exception
     public PartyRoleRemovalException() : base("Existing party roles cannot be removed from this workflow.") { }
 }
 
+public sealed class PartyAlreadySharedException : Exception
+{
+    public PartyAlreadySharedException() : base("The party is already assigned to the target branch.") { }
+}
+
 public sealed class PartyCommands(
     IFieldOpsDbContext dbContext,
     IMutationExecutor mutationExecutor,
-    IAuditWriter auditWriter)
+    IAuditWriter auditWriter,
+    IPartyNameLock partyNameLock)
 {
     public Task<Guid> CreateAsync(CreatePartyInput input, CancellationToken cancellationToken = default) =>
         mutationExecutor.ExecuteAsync(
@@ -31,6 +37,7 @@ public sealed class PartyCommands(
             async token =>
             {
                 string normalizedName = input.OrganizationName.Trim().ToUpperInvariant();
+                await partyNameLock.AcquireAsync(normalizedName, token);
                 if (await dbContext.Parties.AnyAsync(
                     party => EF.Property<string>(party, "NormalizedName") == normalizedName,
                     token))
@@ -83,6 +90,7 @@ public sealed class PartyCommands(
                 }
 
                 string normalizedName = input.OrganizationName.Trim().ToUpperInvariant();
+                await partyNameLock.AcquireAsync(normalizedName, token);
                 if (await dbContext.Parties.AnyAsync(
                     item => item.Id != input.Id && EF.Property<string>(item, "NormalizedName") == normalizedName,
                     token))
@@ -126,6 +134,8 @@ public sealed class PartyCommands(
             "party-share",
             async token =>
             {
+                Guid targetBranchId = input.TargetBranchId
+                    ?? throw new ArgumentException("A target branch is required.", nameof(input));
                 Party party = await dbContext.Parties
                     .Include(item => item.BranchAssignments)
                     .SingleOrDefaultAsync(item => item.Id == partyId, token)
@@ -136,13 +146,13 @@ public sealed class PartyCommands(
                     throw new UnauthorizedAccessException("Party is not assigned to the acting branch.");
                 }
 
-                if (party.BranchAssignments.Any(assignment => assignment.BranchId == input.TargetBranchId))
+                if (party.BranchAssignments.Any(assignment => assignment.BranchId == targetBranchId))
                 {
-                    throw new PartyDuplicateException();
+                    throw new PartyAlreadySharedException();
                 }
 
                 Branch targetBranch = await dbContext.Branches.SingleOrDefaultAsync(
-                    branch => branch.Id == input.TargetBranchId,
+                    branch => branch.Id == targetBranchId,
                     token) ?? throw new KeyNotFoundException("Target branch not found.");
                 party.AssignToBranch(targetBranch);
                 auditWriter.Write(

@@ -16,6 +16,202 @@ namespace FieldOps.IntegrationTests.Features;
 public sealed class PartyFeatureTests(PostgresFixture postgres)
 {
     [Fact]
+    public async Task ConcurrentDuplicateCreatesProduceOneSuccessAndOneConflict()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        Guid branchId = await GetBranchIdAsync(application, "sales.rep@fieldops.demo");
+        await InstallPartyWriteDelayAsync(application);
+        using HttpClient firstClient = CreateClient(application);
+        using HttpClient secondClient = CreateClient(application);
+        await LoginAsAsync(firstClient, DemoRoleNames.SalesRepresentative);
+        await LoginAsAsync(secondClient, DemoRoleNames.SalesRepresentative);
+        string firstToken = await GetAntiforgeryTokenAsync(firstClient, $"/parties/create?branchId={branchId}");
+        string secondToken = await GetAntiforgeryTokenAsync(secondClient, $"/parties/create?branchId={branchId}");
+
+        Task<HttpResponseMessage> firstRequest = firstClient.PostAsync(
+            "/parties/create",
+            CreatePartyForm(branchId, "Fictional Concurrent Duplicate", firstToken));
+        Task<HttpResponseMessage> secondRequest = secondClient.PostAsync(
+            "/parties/create",
+            CreatePartyForm(branchId, "Fictional Concurrent Duplicate", secondToken));
+        HttpResponseMessage[] responses = await Task.WhenAll(firstRequest, secondRequest);
+        using HttpResponseMessage firstResponse = responses[0];
+        using HttpResponseMessage secondResponse = responses[1];
+
+        Assert.Equal(
+            [HttpStatusCode.Redirect, HttpStatusCode.Conflict],
+            responses.Select(response => response.StatusCode).Order().ToArray());
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.Equal(1, await dbContext.Parties.CountAsync(
+            party => party.OrganizationName == "Fictional Concurrent Duplicate"));
+        Assert.Equal(1, await dbContext.AuditEntries.CountAsync(audit => audit.Action == "Created"));
+    }
+
+    [Fact]
+    public async Task ConcurrentRenameAndCreateEnforceOneNormalizedNameWinner()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        (Guid partyId, Guid branchId, _, uint version) = await SeedEditablePartyAsync(application);
+        await InstallPartyWriteDelayAsync(application);
+        using HttpClient renameClient = CreateClient(application);
+        using HttpClient createClient = CreateClient(application);
+        await LoginAsAsync(renameClient, DemoRoleNames.SalesRepresentative);
+        await LoginAsAsync(createClient, DemoRoleNames.SalesRepresentative);
+        string renameToken = await GetAntiforgeryTokenAsync(
+            renameClient,
+            $"/parties/{partyId}/edit?branchId={branchId}");
+        string createToken = await GetAntiforgeryTokenAsync(
+            createClient,
+            $"/parties/create?branchId={branchId}");
+
+        const string targetName = "Fictional Concurrent Rename Target";
+        Task<HttpResponseMessage> renameRequest = renameClient.PostAsync(
+            $"/parties/{partyId}/edit",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["Id"] = partyId.ToString(),
+                ["BranchId"] = branchId.ToString(),
+                ["Version"] = version.ToString(),
+                ["OrganizationName"] = targetName,
+                ["IsCustomer"] = "true",
+                ["__RequestVerificationToken"] = renameToken
+            }));
+        Task<HttpResponseMessage> createRequest = createClient.PostAsync(
+            "/parties/create",
+            CreatePartyForm(branchId, targetName, createToken));
+        HttpResponseMessage[] responses = await Task.WhenAll(renameRequest, createRequest);
+        using HttpResponseMessage renameResponse = responses[0];
+        using HttpResponseMessage createResponse = responses[1];
+
+        Assert.Equal(
+            [HttpStatusCode.Redirect, HttpStatusCode.Conflict],
+            responses.Select(response => response.StatusCode).Order().ToArray());
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.Equal(1, await dbContext.Parties.CountAsync(
+            party => EF.Property<string>(party, "NormalizedName") == targetName.ToUpperInvariant()));
+        Assert.Equal(1, await dbContext.AuditEntries.CountAsync());
+    }
+
+    [Fact]
+    public async Task BranchScopedDetailsHideOtherAssignmentsWhileAdministratorSeesAll()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        (Guid partyId, Guid sourceBranchId, Guid targetBranchId, _) = await SeedEditablePartyAsync(application);
+        await SharePartyOutOfBandAsync(application, partyId, targetBranchId);
+        (string sourceName, string targetName) = await GetBranchNamesAsync(
+            application,
+            sourceBranchId,
+            targetBranchId);
+        using HttpClient managerClient = CreateClient(application);
+        using HttpClient administratorClient = CreateClient(application);
+        await LoginAsAsync(managerClient, DemoRoleNames.BranchManager);
+        await LoginAsAsync(administratorClient, DemoRoleNames.SystemAdministrator);
+
+        using HttpResponseMessage managerResponse = await managerClient.GetAsync(
+            $"/parties/{partyId}?branchId={sourceBranchId}");
+        string managerHtml = await managerResponse.Content.ReadAsStringAsync();
+        using HttpResponseMessage administratorResponse = await administratorClient.GetAsync(
+            $"/parties/{partyId}?branchId={sourceBranchId}");
+        string administratorHtml = await administratorResponse.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, managerResponse.StatusCode);
+        Assert.Contains(sourceName, managerHtml);
+        Assert.DoesNotContain(targetName, managerHtml);
+        Assert.Equal(HttpStatusCode.OK, administratorResponse.StatusCode);
+        Assert.Contains(sourceName, administratorHtml);
+        Assert.Contains(targetName, administratorHtml);
+    }
+
+    [Fact]
+    public async Task InvalidShareReturnsFocusedEditValidationWithoutAudit()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        (Guid partyId, Guid branchId, _, uint version) = await SeedEditablePartyAsync(application);
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.SystemAdministrator);
+        string token = await GetAntiforgeryTokenAsync(
+            client,
+            $"/parties/{partyId}/edit?branchId={branchId}");
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/parties/{partyId}/share",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["BranchId"] = branchId.ToString(),
+                ["Version"] = version.ToString(),
+                ["TargetBranchId"] = string.Empty,
+                ["__RequestVerificationToken"] = token
+            }));
+        string html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Edit party", html);
+        Assert.Contains("Select a target branch", html);
+        Assert.Contains("validation-summary-errors", html);
+        Assert.Contains("field-validation-error", html);
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.False(await dbContext.AuditEntries.AnyAsync(item => item.AggregateId == partyId));
+    }
+
+    [Fact]
+    public async Task MaximumPageNumberReturnsBadRequestInsteadOfOverflowing()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        Guid branchId = await GetBranchIdAsync(application, "sales.rep@fieldops.demo");
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.SalesRepresentative);
+
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/parties?branchId={branchId}&page={int.MaxValue}&pageSize=100");
+        string body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("page is outside the supported range", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DuplicateAndStaleShareReturnDeterministicEditUiWithoutAudit()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        (Guid partyId, Guid branchId, Guid targetBranchId, _) = await SeedEditablePartyAsync(application);
+        await SharePartyOutOfBandAsync(application, partyId, targetBranchId);
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.SystemAdministrator);
+        uint currentVersion = await GetPartyVersionAsync(application, partyId);
+        string token = await GetAntiforgeryTokenAsync(client, $"/parties/{partyId}/edit?branchId={branchId}");
+
+        using HttpResponseMessage duplicate = await client.PostAsync(
+            $"/parties/{partyId}/share",
+            SharePartyForm(branchId, targetBranchId, currentVersion, token));
+        string duplicateHtml = await duplicate.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        Assert.Contains("already assigned", duplicateHtml);
+
+        token = await GetAntiforgeryTokenAsync(client, $"/parties/{partyId}/edit?branchId={branchId}");
+        uint staleVersion = await GetPartyVersionAsync(application, partyId);
+        await RenamePartyOutOfBandAsync(application, partyId);
+        using HttpResponseMessage stale = await client.PostAsync(
+            $"/parties/{partyId}/share",
+            SharePartyForm(branchId, targetBranchId, staleVersion, token));
+        string staleHtml = await stale.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Contains("changed after you opened", staleHtml);
+
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.False(await dbContext.AuditEntries.AnyAsync(item => item.AggregateId == partyId));
+    }
+
+    [Fact]
     public async Task SearchFindsAssignedPartiesByNormalizedNameContactAndSite()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
@@ -398,6 +594,54 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         await dbContext.SaveChangesAsync();
     }
 
+    private static async Task SharePartyOutOfBandAsync(
+        FieldOpsWebApplicationFactory application,
+        Guid partyId,
+        Guid targetBranchId)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Party party = await dbContext.Parties
+            .Include(item => item.BranchAssignments)
+            .SingleAsync(item => item.Id == partyId);
+        Branch targetBranch = await dbContext.Branches.SingleAsync(branch => branch.Id == targetBranchId);
+        party.AssignToBranch(targetBranch);
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task<(string SourceName, string TargetName)> GetBranchNamesAsync(
+        FieldOpsWebApplicationFactory application,
+        Guid sourceBranchId,
+        Guid targetBranchId)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Dictionary<Guid, string> names = await dbContext.Branches
+            .Where(branch => branch.Id == sourceBranchId || branch.Id == targetBranchId)
+            .ToDictionaryAsync(branch => branch.Id, branch => branch.Name);
+        return (names[sourceBranchId], names[targetBranchId]);
+    }
+
+    private static async Task InstallPartyWriteDelayAsync(FieldOpsWebApplicationFactory application)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE OR REPLACE FUNCTION fieldops_test_delay_party_write()
+            RETURNS trigger AS $function$
+            BEGIN
+                PERFORM pg_sleep(1.5);
+                RETURN NEW;
+            END;
+            $function$ LANGUAGE plpgsql;
+
+            CREATE TRIGGER fieldops_test_delay_party_write
+            BEFORE INSERT OR UPDATE OF "OrganizationName" ON "Parties"
+            FOR EACH ROW EXECUTE FUNCTION fieldops_test_delay_party_write();
+            """);
+    }
+
     private static async Task<Guid> ReassignSalesUserToFieldBranchAsync(
         FieldOpsWebApplicationFactory application)
     {
@@ -465,6 +709,19 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
             ["BranchId"] = branchId.ToString(),
             ["OrganizationName"] = organizationName,
             ["RoleType"] = PartyRoleType.Customer.ToString(),
+            ["__RequestVerificationToken"] = token
+        });
+
+    private static FormUrlEncodedContent SharePartyForm(
+        Guid branchId,
+        Guid targetBranchId,
+        uint version,
+        string token) =>
+        new(new Dictionary<string, string>
+        {
+            ["BranchId"] = branchId.ToString(),
+            ["TargetBranchId"] = targetBranchId.ToString(),
+            ["Version"] = version.ToString(),
             ["__RequestVerificationToken"] = token
         });
 }

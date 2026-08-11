@@ -5,6 +5,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FieldOps.Features.Parties;
 
+public sealed class PartyPageOutOfRangeException : Exception
+{
+    public PartyPageOutOfRangeException() : base("The page is outside the supported range.") { }
+}
+
 public sealed class PartyQueries(IFieldOpsDbContext dbContext)
 {
     public const int DefaultPageSize = 25;
@@ -18,6 +23,12 @@ public sealed class PartyQueries(IFieldOpsDbContext dbContext)
         int pageSize = request.PageSize <= 0
             ? DefaultPageSize
             : Math.Min(request.PageSize, MaximumPageSize);
+        long offset = ((long)page - 1) * pageSize;
+        if (offset > int.MaxValue)
+        {
+            throw new PartyPageOutOfRangeException();
+        }
+
         string search = request.Search?.Trim() ?? string.Empty;
         string normalizedSearch = search.ToUpperInvariant();
 
@@ -46,7 +57,7 @@ public sealed class PartyQueries(IFieldOpsDbContext dbContext)
         List<PartyListItem> items = await parties
             .OrderBy(party => EF.Property<string>(party, "NormalizedName"))
             .ThenBy(party => party.Id)
-            .Skip((page - 1) * pageSize)
+            .Skip((int)offset)
             .Take(pageSize)
             .Select(party => new PartyListItem(
                 party.Id,
@@ -98,6 +109,7 @@ public sealed class PartyQueries(IFieldOpsDbContext dbContext)
     public async Task<PartyDetailsViewModel?> GetDetailsAsync(
         Guid partyId,
         Guid branchId,
+        bool includeAllBranchAssignments,
         CancellationToken cancellationToken = default)
     {
         return await dbContext.Parties
@@ -122,6 +134,7 @@ public sealed class PartyQueries(IFieldOpsDbContext dbContext)
                     .Select(site => site.Name)
                     .ToList(),
                 party.BranchAssignments
+                    .Where(assignment => includeAllBranchAssignments || assignment.BranchId == branchId)
                     .Select(assignment => dbContext.Branches
                         .Where(branch => branch.Id == assignment.BranchId)
                         .Select(branch => branch.Name)

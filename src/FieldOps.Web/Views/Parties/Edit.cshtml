@@ -42,7 +42,17 @@
     <hr /><h2 class="h4">Share with another branch</h2>
     <form asp-action="Share" asp-route-id="@Model.Id" method="post">
         <input name="BranchId" type="hidden" value="@Model.BranchId" /><input name="Version" type="hidden" value="@Model.Version" />
-        <div class="mb-3"><label for="TargetBranchId" class="form-label">Target branch</label><select id="TargetBranchId" name="TargetBranchId" class="form-select">@foreach (BranchOption branch in branches.Where(branch => !Model.AssignedBranchIds.Contains(branch.Id))) { <option value="@branch.Id">@branch.Name</option> }</select></div>
+        <div class="mb-3">
+            <label for="TargetBranchId" class="form-label">Target branch</label>
+            <select id="TargetBranchId" name="TargetBranchId" class="form-select">
+                <option value="">Select a branch</option>
+                @foreach (BranchOption branch in branches.Where(branch => !Model.AssignedBranchIds.Contains(branch.Id)))
+                {
+                    <option value="@branch.Id">@branch.Name</option>
+                }
+            </select>
+            @Html.ValidationMessage("TargetBranchId", null, new { @class = "text-danger" })
+        </div>
         <button type="submit" class="btn btn-outline-primary">Share party</button>
     </form>
 }

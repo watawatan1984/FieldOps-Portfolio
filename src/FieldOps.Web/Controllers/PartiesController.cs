@@ -44,7 +44,14 @@ public sealed class PartiesController(
             return denied;
         }
 
-        return View(await queries.SearchAsync(request, cancellationToken));
+        try
+        {
+            return View(await queries.SearchAsync(request, cancellationToken));
+        }
+        catch (PartyPageOutOfRangeException exception)
+        {
+            return BadRequest(exception.Message);
+        }
     }
 
     [HttpGet("create")]
@@ -104,7 +111,11 @@ public sealed class PartiesController(
             return denied;
         }
 
-        PartyDetailsViewModel? party = await queries.GetDetailsAsync(id, branchId, cancellationToken);
+        PartyDetailsViewModel? party = await queries.GetDetailsAsync(
+            id,
+            branchId,
+            User.IsInRole(DemoRoleNames.SystemAdministrator),
+            cancellationToken);
         return party is null ? NotFound() : View(party);
     }
 
@@ -195,12 +206,21 @@ public sealed class PartiesController(
             return denied;
         }
 
-        if (!ModelState.IsValid || input.TargetBranchId == Guid.Empty)
+        if (!ModelState.IsValid || input.TargetBranchId is null || input.TargetBranchId == Guid.Empty)
         {
-            return BadRequest();
+            if (input.TargetBranchId == Guid.Empty)
+            {
+                ModelState.AddModelError(nameof(input.TargetBranchId), "Select a target branch.");
+            }
+
+            return await EditWithShareOutcomeAsync(
+                id,
+                input.BranchId,
+                StatusCodes.Status400BadRequest,
+                cancellationToken);
         }
 
-        IActionResult? targetDenied = await AuthorizeBranchAsync(input.TargetBranchId, cancellationToken);
+        IActionResult? targetDenied = await AuthorizeBranchAsync(input.TargetBranchId.Value, cancellationToken);
         if (targetDenied is not null)
         {
             return targetDenied;
@@ -213,11 +233,21 @@ public sealed class PartiesController(
         }
         catch (PartyConcurrencyException)
         {
-            return StatusCode(StatusCodes.Status409Conflict);
+            ModelState.AddModelError(string.Empty, "This party changed after you opened the form. Reload and try again.");
+            return await EditWithShareOutcomeAsync(
+                id,
+                input.BranchId,
+                StatusCodes.Status409Conflict,
+                cancellationToken);
         }
-        catch (PartyDuplicateException)
+        catch (PartyAlreadySharedException exception)
         {
-            return Conflict();
+            ModelState.AddModelError(nameof(input.TargetBranchId), exception.Message);
+            return await EditWithShareOutcomeAsync(
+                id,
+                input.BranchId,
+                StatusCodes.Status409Conflict,
+                cancellationToken);
         }
     }
 
@@ -252,5 +282,22 @@ public sealed class PartiesController(
         ViewData["Branches"] = User.IsInRole(DemoRoleNames.SystemAdministrator)
             ? await queries.GetBranchOptionsAsync(cancellationToken)
             : Array.Empty<BranchOption>();
+    }
+
+    private async Task<IActionResult> EditWithShareOutcomeAsync(
+        Guid partyId,
+        Guid branchId,
+        int statusCode,
+        CancellationToken cancellationToken)
+    {
+        EditPartyInput? editInput = await queries.GetEditAsync(partyId, branchId, cancellationToken);
+        if (editInput is null)
+        {
+            return NotFound();
+        }
+
+        await PopulateEditContextAsync(branchId, cancellationToken);
+        Response.StatusCode = statusCode;
+        return View("Edit", editInput);
     }
 }

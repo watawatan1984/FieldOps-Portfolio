@@ -98,6 +98,10 @@ public sealed class EditPartyInput
 public sealed class SharePartyInput
 {
     public Guid BranchId { get; set; }
-    public Guid TargetBranchId { get; set; }
+
+    [Required(ErrorMessage = "Select a target branch.")]
+    [Display(Name = "Target branch")]
+    public Guid? TargetBranchId { get; set; }
+
     public uint Version { get; set; }
 }

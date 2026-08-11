@@ -33,13 +33,20 @@ public sealed class BusinessPartnersController(
             return Forbid();
         }
 
-        return View(await queries.SearchAsync(new PartySearchRequest
+        try
         {
-            BranchId = request.BranchId,
-            Search = request.Search,
-            Page = request.Page,
-            PageSize = request.PageSize,
-            Role = PartyRoleType.BusinessPartner
-        }, cancellationToken));
+            return View(await queries.SearchAsync(new PartySearchRequest
+            {
+                BranchId = request.BranchId,
+                Search = request.Search,
+                Page = request.Page,
+                PageSize = request.PageSize,
+                Role = PartyRoleType.BusinessPartner
+            }, cancellationToken));
+        }
+        catch (PartyPageOutOfRangeException exception)
+        {
+            return BadRequest(exception.Message);
+        }
     }
 }

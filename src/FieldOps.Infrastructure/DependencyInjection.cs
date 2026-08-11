@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<DemoIdentitySeeder>();
         services.AddScoped<IFieldOpsDbContext>(provider => provider.GetRequiredService<FieldOpsDbContext>());
         services.AddScoped<IMutationExecutor, MutationExecutor>();
+        services.AddScoped<IPartyNameLock, PostgresPartyNameLock>();
         services.AddScoped<IAuditWriter, AuditWriter>();
         services.AddSingleton(TimeProvider.System);
         return services;
