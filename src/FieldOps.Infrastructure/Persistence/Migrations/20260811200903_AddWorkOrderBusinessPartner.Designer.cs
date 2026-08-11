@@ -3,6 +3,7 @@ using System;
 using FieldOps.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FieldOps.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(FieldOpsDbContext))]
-    partial class FieldOpsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260811200903_AddWorkOrderBusinessPartner")]
+    partial class AddWorkOrderBusinessPartner
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -163,11 +166,6 @@ namespace FieldOps.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("OrganizationName")
                         .HasColumnType("text");
-
-                    b.Property<string>("SearchTextNormalized")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("text")
-                        .HasComputedColumnSql("upper(regexp_replace(normalize(btrim(COALESCE(\"OrganizationName\", \"LastName\" || ' ' || \"FirstName\")), NFKC), '[[:space:]]+', ' ', 'g'))", true);
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -326,11 +324,6 @@ namespace FieldOps.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PartyId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("SearchTextNormalized")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("text")
-                        .HasComputedColumnSql("upper(regexp_replace(normalize(btrim(\"Name\"), NFKC), '[[:space:]]+', ' ', 'g'))", true);
-
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -369,11 +362,6 @@ namespace FieldOps.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("OccurredAtUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("SearchTextNormalized")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("text")
-                        .HasComputedColumnSql("upper(regexp_replace(normalize(btrim(\"Summary\"), NFKC), '[[:space:]]+', ' ', 'g'))", true);
 
                     b.Property<string>("Summary")
                         .IsRequired()

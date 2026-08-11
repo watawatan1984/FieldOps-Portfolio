@@ -1,4 +1,5 @@
 using FieldOps.Domain.Entities;
+using FieldOps.Features.Work;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -16,6 +17,11 @@ internal sealed class PartyConfiguration : EntityConfiguration<Party>
         builder.Property<string>("NormalizedName")
             .HasComputedColumnSql("upper(COALESCE(\"OrganizationName\", \"LastName\" || ' ' || \"FirstName\"))", stored: true);
         builder.HasIndex("NormalizedName");
+        builder.Property<string>(SearchTextNormalization.PropertyName)
+            .HasComputedColumnSql(
+                SearchTextNormalization.PostgresGeneratedExpression(
+                    "COALESCE(\"OrganizationName\", \"LastName\" || ' ' || \"FirstName\")"),
+                stored: true);
 
         builder.HasMany(party => party.Roles).WithOne().HasForeignKey(role => role.PartyId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(party => party.Roles).UsePropertyAccessMode(PropertyAccessMode.Field);

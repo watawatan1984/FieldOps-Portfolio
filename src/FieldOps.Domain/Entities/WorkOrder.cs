@@ -33,6 +33,8 @@ public sealed class WorkOrder : Entity
 
     public Guid? SalesOpportunityId { get; }
 
+    public Guid? BusinessPartnerId { get; private set; }
+
     public string? AssignedUserId { get; private set; }
 
     public WorkOrderStatus Status { get; private set; }
@@ -54,6 +56,30 @@ public sealed class WorkOrder : Entity
         }
 
         return new WorkOrder(branch, party, site, opportunity.Id);
+    }
+
+    public void AssignBusinessPartner(Party businessPartner)
+    {
+        ArgumentNullException.ThrowIfNull(businessPartner);
+        if (BusinessPartnerId.HasValue)
+        {
+            throw new DomainException("The work order already has a business partner.");
+        }
+        if (businessPartner.Id == PartyId)
+        {
+            throw new DomainException("The work order customer and business partner must be distinct parties.");
+        }
+        if (!businessPartner.Roles.Any(role => role.RoleType == PartyRoleType.BusinessPartner))
+        {
+            throw new DomainException("The selected party does not have the BusinessPartner role.");
+        }
+        if (!businessPartner.BranchAssignments.Any(assignment => assignment.BranchId == BranchId))
+        {
+            throw new DomainException("The business partner must be assigned to the work order branch.");
+        }
+
+        BusinessPartnerId = businessPartner.Id;
+        Touch();
     }
 
     public void AssignToUser(string applicationUserId)

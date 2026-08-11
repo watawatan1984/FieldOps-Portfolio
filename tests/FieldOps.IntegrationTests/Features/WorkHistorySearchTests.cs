@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 using FieldOps.Domain.Entities;
@@ -73,7 +74,7 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
         {
             $"branchId={seed.BranchId}",
             $"customerId={seed.SakuraPartyId}",
-            $"businessPartnerId={seed.SakuraPartyId}",
+            $"businessPartnerId={seed.BusinessPartnerId}",
             $"siteId={seed.SakuraSiteId}",
             $"workStatus={WorkOrderStatus.Completed}",
             $"eventType={WorkEventType.Arrival}",
@@ -96,6 +97,35 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task KeywordNormalizationMatchesEveryPersistedSearchSurface()
+    {
+        await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(database.ConnectionString);
+        using HttpClient client = CreateClient(application);
+        SearchSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+
+        string[] equivalentKeywords =
+        [
+            "フィールド Café",
+            "ガス設備",
+            "設備 点検 Café"
+        ];
+
+        foreach (string keyword in equivalentKeywords)
+        {
+            using HttpResponseMessage response = await client.GetAsync(
+                $"/work-history?branchId={seed.BranchId}&keyword={Uri.EscapeDataString(keyword)}");
+            string html = await response.Content.ReadAsStringAsync();
+            string resultRows = GetResultsTableBody(html);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("Fictional Sakura Facilities", resultRows);
+            Assert.DoesNotContain("Fictional Ume Services", resultRows);
+        }
+    }
+
+    [Fact]
     public async Task EachConflictingCriterionCanExcludeAnOtherwiseMatchingKeyword()
     {
         await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
@@ -109,7 +139,7 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
         string[] conflicts =
         [
             $"customerId={seed.UmePartyId}",
-            $"businessPartnerId={seed.UmePartyId}",
+            $"businessPartnerId={seed.UnrelatedBusinessPartnerId}",
             $"siteId={seed.UmeSiteId}",
             $"workStatus={WorkOrderStatus.Planned}",
             $"eventType={WorkEventType.Correction}",
@@ -197,7 +227,88 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task RawKeywordIsNeverWrittenToLogs()
+    public async Task MalformedBranchIdIsRejectedBeforeBranchDefaulting()
+    {
+        await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
+        CapturingLoggerProvider loggerProvider = new();
+        await using FieldOpsWebApplicationFactory application = new(
+            database.ConnectionString,
+            configureLogging: logging => logging.AddProvider(loggerProvider));
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+
+        using HttpResponseMessage response = await client.GetAsync("/work-history?branchId=not-a-guid");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(response.Headers.Location);
+        Assert.DoesNotContain(loggerProvider.Messages, message =>
+            message.Contains("Work history search completed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task FieldTechnicianCannotExpandAssignedWorkScopeByQueryTampering()
+    {
+        await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(database.ConnectionString);
+        using HttpClient client = CreateClient(application);
+        SearchSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.FieldTechnician);
+
+        string html = await client.GetStringAsync($"/work-history?branchId={seed.BranchId}");
+        using HttpResponseMessage technicianTamper = await client.GetAsync(
+            $"/work-history?branchId={seed.BranchId}&technicianId={Uri.EscapeDataString(seed.ManagerId)}");
+        string technicianTamperHtml = await technicianTamper.Content.ReadAsStringAsync();
+        using HttpResponseMessage branchTamper = await client.GetAsync(
+            $"/work-history?branchId={seed.ForeignBranchId}&technicianId={Uri.EscapeDataString(seed.ManagerId)}");
+
+        string resultRows = GetResultsTableBody(html);
+        Assert.Contains("Fictional Sakura Facilities", resultRows);
+        Assert.DoesNotContain("Fictional Ume Services", resultRows);
+        Assert.Equal(HttpStatusCode.OK, technicianTamper.StatusCode);
+        Assert.Empty(GetResultsTableBody(technicianTamperHtml));
+        Assert.Equal(HttpStatusCode.Forbidden, branchTamper.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("%", "Literal Percent % Customer")]
+    [InlineData("_", "Literal Underscore _ Customer")]
+    [InlineData("\\", "Literal Backslash \\ Customer")]
+    public async Task KeywordTreatsLikeMetacharactersAsLiterals(string keyword, string expectedCustomer)
+    {
+        await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(database.ConnectionString);
+        using HttpClient client = CreateClient(application);
+        SearchSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+
+        string html = await client.GetStringAsync(
+            $"/work-history?branchId={seed.BranchId}&keyword={Uri.EscapeDataString(keyword)}");
+        string resultRows = GetResultsTableBody(html);
+
+        Assert.Contains(expectedCustomer, resultRows);
+        Assert.Single(Regex.Matches(resultRows, "/work-orders/[0-9a-f-]{36}", RegexOptions.IgnoreCase).Cast<Match>());
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-2147483648")]
+    [InlineData("2147483647")]
+    public async Task ExtremePageValuesAreRejectedWithoutServerErrors(string page)
+    {
+        await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(database.ConnectionString);
+        using HttpClient client = CreateClient(application);
+        SearchSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/work-history?branchId={seed.BranchId}&page={page}&pageSize=100");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SearchCriteriaAreNeverWrittenToLogs()
     {
         const string rawKeyword = "極秘_設備%検索";
         await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
@@ -210,24 +321,226 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
         SearchSeed seed = await SeedAsync(application);
         await LoginAsAsync(client, DemoRoleNames.BranchManager);
 
-        using HttpResponseMessage response = await client.GetAsync(
-            $"/work-history?branchId={seed.BranchId}&keyword={Uri.EscapeDataString(rawKeyword)}");
+        string path = "/work-history?" + string.Join('&', new[]
+        {
+            $"branchId={seed.BranchId}",
+            $"customerId={seed.SakuraPartyId}",
+            $"businessPartnerId={seed.BusinessPartnerId}",
+            $"siteId={seed.SakuraSiteId}",
+            $"technicianId={Uri.EscapeDataString(seed.TechnicianId)}",
+            $"keyword={Uri.EscapeDataString(rawKeyword)}"
+        });
+        using HttpResponseMessage response = await client.GetAsync(path);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains(loggerProvider.Messages, message =>
             message.Contains("Work history search completed", StringComparison.Ordinal));
-        Assert.DoesNotContain(loggerProvider.Messages, message =>
-            message.Contains(rawKeyword, StringComparison.Ordinal));
+        string[] sensitiveValues =
+        [
+            rawKeyword,
+            seed.BranchId.ToString(),
+            seed.SakuraPartyId.ToString(),
+            seed.BusinessPartnerId.ToString(),
+            seed.SakuraSiteId.ToString(),
+            seed.TechnicianId
+        ];
+        foreach (string sensitiveValue in sensitiveValues)
+        {
+            Assert.DoesNotContain(loggerProvider.Messages, message =>
+                message.Contains(sensitiveValue, StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     [Fact]
     public async Task TenThousandRowBranchDateExplainUsesTheWorkHistoryIndex()
     {
+        string evidencePath = Path.Combine(FindRepositoryRoot(), "docs", "evidence", "work-history-explain.json");
+        byte[] evidenceBefore = await File.ReadAllBytesAsync(evidencePath);
         await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
         string connectionString = database.ConnectionString;
         await using FieldOpsWebApplicationFactory application = new(connectionString);
         SearchSeed seed = await SeedAsync(application);
+        ExplainCapture capture = await CaptureExplainAsync(connectionString, seed);
 
+        Assert.DoesNotContain(capture.Nodes, node =>
+            node.NodeType == "Seq Scan" && node.RelationName == "WorkOrders");
+        Assert.Contains(capture.Nodes, node =>
+            node.IndexName == "IX_WorkOrders_BranchId_ScheduledStartUtc_Id");
+
+        Assert.Equal(evidenceBefore, await File.ReadAllBytesAsync(evidencePath));
+    }
+
+    [Fact]
+    public void CommittedExplainEvidenceIsStableSanitizedAndRejectsSequentialScan()
+    {
+        string evidencePath = Path.Combine(FindRepositoryRoot(), "docs", "evidence", "work-history-explain.json");
+        string evidenceJson = File.ReadAllText(evidencePath);
+        using JsonDocument evidence = JsonDocument.Parse(evidenceJson);
+        JsonElement root = evidence.RootElement;
+
+        Assert.Equal(1, root.GetProperty("evidenceSchemaVersion").GetInt32());
+        Assert.Equal(10000, root.GetProperty("dataset").GetProperty("workOrders").GetInt32());
+        Assert.Equal("ANALYZE, BUFFERS, FORMAT JSON", root.GetProperty("explainOptions").GetString());
+        JsonElement rootPlan = root.GetProperty("explainOutput")[0].GetProperty("Plan");
+        List<(string NodeType, string? RelationName, string? IndexName)> nodes = [];
+        CollectPlanNodes(rootPlan, nodes);
+        Assert.DoesNotContain(nodes, node =>
+            node.NodeType == "Seq Scan" && node.RelationName == "WorkOrders");
+        Assert.Contains(nodes, node =>
+            node.IndexName == "IX_WorkOrders_BranchId_ScheduledStartUtc_Id");
+        Assert.DoesNotMatch(
+            "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            evidenceJson);
+    }
+
+    [Fact]
+    public async Task ExplicitWorkHistoryExplainEvidenceRefresh()
+    {
+        if (!string.Equals(
+            Environment.GetEnvironmentVariable("FIELDOPS_REFRESH_WORK_HISTORY_EXPLAIN"),
+            "1",
+            StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(database.ConnectionString);
+        SearchSeed seed = await SeedAsync(application);
+        ExplainCapture capture = await CaptureExplainAsync(database.ConnectionString, seed);
+        Assert.DoesNotContain(capture.Nodes, node =>
+            node.NodeType == "Seq Scan" && node.RelationName == "WorkOrders");
+        JsonObject evidence = new()
+        {
+            ["evidenceSchemaVersion"] = 1,
+            ["postgresImage"] = "postgres:17-alpine",
+            ["dataset"] = new JsonObject
+            {
+                ["workOrders"] = 10000,
+                ["branchDistribution"] = "alternating"
+            },
+            ["query"] = "branch-plus-scheduled-date, ordered and limited to 100",
+            ["explainOptions"] = "ANALYZE, BUFFERS, FORMAT JSON",
+            ["explainOutput"] = SanitizeExplain(capture.RawExplainJson)
+        };
+        string evidencePath = Path.Combine(FindRepositoryRoot(), "docs", "evidence", "work-history-explain.json");
+        await File.WriteAllTextAsync(
+            evidencePath,
+            evidence.ToJsonString(new JsonSerializerOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                WriteIndented = true
+            }) + Environment.NewLine);
+    }
+
+    private static async Task<SearchSeed> SeedAsync(FieldOpsWebApplicationFactory application)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        ApplicationUser manager = await dbContext.Users.SingleAsync(user => user.UserName == "branch.manager@fieldops.demo");
+        ApplicationUser technician = await dbContext.Users.SingleAsync(user => user.UserName == "field.tech@fieldops.demo");
+        Branch authorizedBranch = await dbContext.Branches.SingleAsync(branch => branch.Id == manager.BranchId);
+        Branch foreignBranch = await dbContext.Branches.SingleAsync(branch => branch.Id != authorizedBranch.Id);
+        technician.BranchId = authorizedBranch.Id;
+
+        Party businessPartner = Party.CreateOrganization("Fictional Sakura Delivery Partner");
+        businessPartner.AddRole(PartyRoleType.BusinessPartner);
+        businessPartner.AssignToBranch(authorizedBranch);
+        Party unrelatedBusinessPartner = Party.CreateOrganization("Fictional Unrelated Delivery Partner");
+        unrelatedBusinessPartner.AddRole(PartyRoleType.BusinessPartner);
+        unrelatedBusinessPartner.AssignToBranch(authorizedBranch);
+
+        (Party sakuraParty, Site sakuraSite, WorkOrder sakuraWork) = AddWorkOrder(
+            dbContext,
+            authorizedBranch,
+            "Fictional Sakura Facilities ﾌｨｰﾙﾄﾞ Cafe\u0301",
+            "Tokyo Sakura Site ｶﾞｽ設備");
+        sakuraWork.AssignToUser(technician.Id);
+        sakuraWork.Schedule(
+            new DateTime(2026, 8, 20, 23, 59, 59, DateTimeKind.Utc),
+            new DateTime(2026, 8, 15, 0, 0, 0, DateTimeKind.Utc));
+        sakuraWork.MoveTo(WorkOrderStatus.InProgress, new DateTime(2026, 8, 20, 23, 0, 0, DateTimeKind.Utc));
+        sakuraWork.AddEvent(
+            WorkEventType.Arrival,
+            new DateTime(2026, 8, 20, 23, 30, 0, DateTimeKind.Utc),
+            "設備 点検のため現場に到着",
+            technician.Id);
+        sakuraWork.AddEvent(
+            WorkEventType.Completion,
+            new DateTime(2026, 8, 31, 23, 59, 59, DateTimeKind.Utc),
+            "設備 点検 Cafe\u0301 を完了",
+            technician.Id);
+        sakuraWork.MoveTo(WorkOrderStatus.Completed, new DateTime(2026, 8, 31, 23, 59, 59, DateTimeKind.Utc));
+        sakuraWork.AssignBusinessPartner(businessPartner);
+        (Party umeParty, Site umeSite, _) = AddWorkOrder(
+            dbContext,
+            authorizedBranch,
+            "Fictional Ume Services",
+            "Tokyo Ume Site");
+        AddWorkOrder(dbContext, foreignBranch, "Fictional Foreign Customer", "Remote Site");
+        AddWorkOrder(dbContext, authorizedBranch, "Literal Percent % Customer", "Literal Percent Site");
+        AddWorkOrder(dbContext, authorizedBranch, "Literal Underscore _ Customer", "Literal Underscore Site");
+        AddWorkOrder(dbContext, authorizedBranch, "Literal Backslash \\ Customer", "Literal Backslash Site");
+        dbContext.AddRange(businessPartner, unrelatedBusinessPartner);
+        await dbContext.SaveChangesAsync();
+        return new SearchSeed(
+            authorizedBranch.Id,
+            foreignBranch.Id,
+            sakuraParty.Id,
+            umeParty.Id,
+            sakuraSite.Id,
+            umeSite.Id,
+            sakuraWork.Id,
+            businessPartner.Id,
+            unrelatedBusinessPartner.Id,
+            technician.Id,
+            manager.Id);
+    }
+
+    private async Task<TestDatabaseLease> CreateDatabaseLeaseAsync() =>
+        new(await postgres.CreateEmptyDatabaseAsync());
+
+    private static (Party Party, Site Site, WorkOrder WorkOrder) AddWorkOrder(
+        FieldOpsDbContext dbContext,
+        Branch branch,
+        string partyName,
+        string siteName)
+    {
+        Party party = Party.CreateOrganization(partyName);
+        party.AddRole(PartyRoleType.Customer);
+        party.AssignToBranch(branch);
+        party.AddSite(branch, siteName);
+        (SalesOpportunity opportunity, WorkOrder workOrder) = TestWorkOrderFactory.CreateFromWon(
+            branch,
+            party,
+            party.Sites.Single());
+        dbContext.AddRange(party, opportunity, workOrder);
+        return (party, party.Sites.Single(), workOrder);
+    }
+
+    private static async Task AddManyAuthorizedWorkOrdersAsync(
+        FieldOpsWebApplicationFactory application,
+        Guid branchId,
+        int count)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Branch branch = await dbContext.Branches.SingleAsync(item => item.Id == branchId);
+        for (int index = 0; index < count; index++)
+        {
+            AddWorkOrder(
+                dbContext,
+                branch,
+                $"Fictional Paging Customer {index:D3}",
+                $"Paging Site {index:D3}");
+        }
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task<ExplainCapture> CaptureExplainAsync(
+        string connectionString,
+        SearchSeed seed)
+    {
         await using NpgsqlConnection connection = new(connectionString);
         await connection.OpenAsync();
         await using (NpgsqlCommand insert = connection.CreateCommand())
@@ -261,146 +574,85 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
             await analyze.ExecuteNonQueryAsync();
         }
 
-        string explainJson;
-        await using (NpgsqlCommand explain = connection.CreateCommand())
-        {
-            explain.CommandText = """
-                EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-                SELECT "Id", "ScheduledStartUtc"
-                FROM "WorkOrders"
-                WHERE "BranchId" = @branchId
-                  AND "ScheduledStartUtc" >= TIMESTAMPTZ '2026-08-01 00:00:00+00'
-                  AND "ScheduledStartUtc" < TIMESTAMPTZ '2026-09-01 00:00:00+00'
-                ORDER BY "ScheduledStartUtc" DESC, "Id"
-                LIMIT 100
-                """;
-            explain.Parameters.AddWithValue("branchId", seed.BranchId);
-            object value = await explain.ExecuteScalarAsync()
-                ?? throw new InvalidOperationException("PostgreSQL did not return an EXPLAIN plan.");
-            explainJson = value.ToString()
-                ?? throw new InvalidOperationException("PostgreSQL returned an empty EXPLAIN plan.");
-        }
-
-        string sanitizedExplainJson = Regex.Replace(
-            explainJson,
-            "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-            "<sanitized-guid>",
-            RegexOptions.IgnoreCase);
-        using JsonDocument planDocument = JsonDocument.Parse(sanitizedExplainJson);
+        await using NpgsqlCommand explain = connection.CreateCommand();
+        explain.CommandText = """
+            EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+            SELECT "Id", "ScheduledStartUtc"
+            FROM "WorkOrders"
+            WHERE "BranchId" = @branchId
+              AND "ScheduledStartUtc" >= TIMESTAMPTZ '2026-08-01 00:00:00+00'
+              AND "ScheduledStartUtc" < TIMESTAMPTZ '2026-09-01 00:00:00+00'
+            ORDER BY "ScheduledStartUtc" DESC, "Id"
+            LIMIT 100
+            """;
+        explain.Parameters.AddWithValue("branchId", seed.BranchId);
+        object value = await explain.ExecuteScalarAsync()
+            ?? throw new InvalidOperationException("PostgreSQL did not return an EXPLAIN plan.");
+        using JsonDocument planDocument = JsonDocument.Parse(
+            value.ToString() ?? throw new InvalidOperationException("PostgreSQL returned an empty EXPLAIN plan."));
         JsonElement rootPlan = planDocument.RootElement[0].GetProperty("Plan");
         List<(string NodeType, string? RelationName, string? IndexName)> nodes = [];
         CollectPlanNodes(rootPlan, nodes);
-        Assert.DoesNotContain(nodes, node =>
-            node.NodeType == "Seq Scan" && node.RelationName == "WorkOrders");
-        Assert.Contains(nodes, node =>
-            node.IndexName == "IX_WorkOrders_BranchId_ScheduledStartUtc_Id");
+        return new ExplainCapture(nodes, value.ToString()!);
+    }
 
-        string repositoryRoot = FindRepositoryRoot();
-        string evidencePath = Path.Combine(repositoryRoot, "docs", "evidence", "work-history-explain.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
-        await File.WriteAllTextAsync(
-            evidencePath,
-            JsonSerializer.Serialize(planDocument.RootElement, new JsonSerializerOptions
+    private static JsonNode SanitizeExplain(string explainJson)
+    {
+        JsonNode root = JsonNode.Parse(explainJson)
+            ?? throw new InvalidOperationException("PostgreSQL returned invalid EXPLAIN JSON.");
+        SanitizeNode(root);
+        return root;
+    }
+
+    private static void SanitizeNode(JsonNode node)
+    {
+        if (node is JsonArray array)
+        {
+            foreach (JsonNode? child in array)
             {
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                WriteIndented = true
-            }));
-    }
-
-    private static async Task<SearchSeed> SeedAsync(FieldOpsWebApplicationFactory application)
-    {
-        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
-        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
-        ApplicationUser manager = await dbContext.Users.SingleAsync(user => user.UserName == "branch.manager@fieldops.demo");
-        ApplicationUser technician = await dbContext.Users.SingleAsync(user => user.UserName == "field.tech@fieldops.demo");
-        Branch authorizedBranch = await dbContext.Branches.SingleAsync(branch => branch.Id == manager.BranchId);
-        Branch foreignBranch = await dbContext.Branches.SingleAsync(branch => branch.Id != authorizedBranch.Id);
-        technician.BranchId = authorizedBranch.Id;
-
-        (Party sakuraParty, Site sakuraSite, WorkOrder sakuraWork) = AddWorkOrder(
-            dbContext,
-            authorizedBranch,
-            "Fictional Sakura Facilities",
-            "Tokyo Sakura Site",
-            isBusinessPartner: true);
-        sakuraWork.AssignToUser(technician.Id);
-        sakuraWork.Schedule(
-            new DateTime(2026, 8, 20, 23, 59, 59, DateTimeKind.Utc),
-            new DateTime(2026, 8, 15, 0, 0, 0, DateTimeKind.Utc));
-        sakuraWork.MoveTo(WorkOrderStatus.InProgress, new DateTime(2026, 8, 20, 23, 0, 0, DateTimeKind.Utc));
-        sakuraWork.AddEvent(
-            WorkEventType.Arrival,
-            new DateTime(2026, 8, 20, 23, 30, 0, DateTimeKind.Utc),
-            "設備 点検のため現場に到着",
-            technician.Id);
-        sakuraWork.AddEvent(
-            WorkEventType.Completion,
-            new DateTime(2026, 8, 31, 23, 59, 59, DateTimeKind.Utc),
-            "設備 点検を完了",
-            technician.Id);
-        sakuraWork.MoveTo(WorkOrderStatus.Completed, new DateTime(2026, 8, 31, 23, 59, 59, DateTimeKind.Utc));
-        (Party umeParty, Site umeSite, _) = AddWorkOrder(
-            dbContext,
-            authorizedBranch,
-            "Fictional Ume Services",
-            "Tokyo Ume Site");
-        AddWorkOrder(dbContext, foreignBranch, "Fictional Foreign Customer", "Remote Site");
-        await dbContext.SaveChangesAsync();
-        return new SearchSeed(
-            authorizedBranch.Id,
-            foreignBranch.Id,
-            sakuraParty.Id,
-            umeParty.Id,
-            sakuraSite.Id,
-            umeSite.Id,
-            sakuraWork.Id,
-            technician.Id);
-    }
-
-    private async Task<TestDatabaseLease> CreateDatabaseLeaseAsync() =>
-        new(await postgres.CreateEmptyDatabaseAsync());
-
-    private static (Party Party, Site Site, WorkOrder WorkOrder) AddWorkOrder(
-        FieldOpsDbContext dbContext,
-        Branch branch,
-        string partyName,
-        string siteName,
-        bool isBusinessPartner = false)
-    {
-        Party party = Party.CreateOrganization(partyName);
-        party.AddRole(PartyRoleType.Customer);
-        if (isBusinessPartner)
-        {
-            party.AddRole(PartyRoleType.BusinessPartner);
+                if (child is not null)
+                {
+                    SanitizeNode(child);
+                }
+            }
+            return;
         }
-        party.AssignToBranch(branch);
-        party.AddSite(branch, siteName);
-        (SalesOpportunity opportunity, WorkOrder workOrder) = TestWorkOrderFactory.CreateFromWon(
-            branch,
-            party,
-            party.Sites.Single());
-        dbContext.AddRange(party, opportunity, workOrder);
-        return (party, party.Sites.Single(), workOrder);
+        if (node is not JsonObject item)
+        {
+            return;
+        }
+
+        foreach (string propertyName in item.Select(property => property.Key).ToArray())
+        {
+            JsonNode? value = item[propertyName];
+            if (value is null)
+            {
+                continue;
+            }
+            if (IsVolatileExplainMetric(propertyName))
+            {
+                item[propertyName] = "<sanitized-runtime-value>";
+            }
+            else if (value is JsonValue scalar && scalar.TryGetValue(out string? textValue))
+            {
+                item[propertyName] = Regex.Replace(
+                    textValue,
+                    "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                    "<sanitized-guid>",
+                    RegexOptions.IgnoreCase);
+            }
+            else
+            {
+                SanitizeNode(value);
+            }
+        }
     }
 
-    private static async Task AddManyAuthorizedWorkOrdersAsync(
-        FieldOpsWebApplicationFactory application,
-        Guid branchId,
-        int count)
-    {
-        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
-        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
-        Branch branch = await dbContext.Branches.SingleAsync(item => item.Id == branchId);
-        for (int index = 0; index < count; index++)
-        {
-            AddWorkOrder(
-                dbContext,
-                branch,
-                $"Fictional Paging Customer {index:D3}",
-                $"Paging Site {index:D3}");
-        }
-        await dbContext.SaveChangesAsync();
-    }
+    private static bool IsVolatileExplainMetric(string propertyName) =>
+        propertyName is "Startup Cost" or "Total Cost" or "Plan Rows" or "Plan Width" or
+            "Actual Startup Time" or "Actual Total Time" or "Heap Fetches" or
+            "Planning Time" or "Execution Time" ||
+        propertyName.EndsWith(" Blocks", StringComparison.Ordinal);
 
     private static async Task LoginAsAsync(HttpClient client, string role)
     {
@@ -473,7 +725,14 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
         Guid SakuraSiteId,
         Guid UmeSiteId,
         Guid SakuraWorkOrderId,
-        string TechnicianId);
+        Guid BusinessPartnerId,
+        Guid UnrelatedBusinessPartnerId,
+        string TechnicianId,
+        string ManagerId);
+
+    private sealed record ExplainCapture(
+        IReadOnlyList<(string NodeType, string? RelationName, string? IndexName)> Nodes,
+        string RawExplainJson);
 
     private sealed class CapturingLoggerProvider : ILoggerProvider
     {

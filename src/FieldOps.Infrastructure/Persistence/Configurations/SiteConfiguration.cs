@@ -1,4 +1,5 @@
 using FieldOps.Domain.Entities;
+using FieldOps.Features.Work;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -11,6 +12,10 @@ internal sealed class SiteConfiguration : EntityConfiguration<Site>
     {
         builder.ToTable("Sites");
         builder.Property(site => site.Name).IsRequired();
+        builder.Property<string>(SearchTextNormalization.PropertyName)
+            .HasComputedColumnSql(
+                SearchTextNormalization.PostgresGeneratedExpression("\"Name\""),
+                stored: true);
         builder.HasOne<Branch>().WithMany().HasForeignKey(site => site.BranchId).OnDelete(DeleteBehavior.Restrict);
     }
 }

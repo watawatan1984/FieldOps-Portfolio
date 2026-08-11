@@ -213,6 +213,46 @@ public sealed class WorkOrderTests
         Assert.Throws<DomainException>(() => workOrder.AssignToUser(" "));
     }
 
+    [Fact]
+    public void AssignBusinessPartner_RequiresDistinctRoleAndBranchAssociation()
+    {
+        Branch branch = Branch.Create("Harbor Office");
+        Party customer = Party.CreateOrganization("Northwind Service Works");
+        customer.AddRole(PartyRoleType.Customer);
+        customer.AssignToBranch(branch);
+        customer.AddSite(branch, "Pier 8 Workshop");
+        WorkOrder workOrder = WorkOrder.CreateFromWon(
+            CreateWonOpportunity(branch, customer, customer.Sites.Single()),
+            branch,
+            customer,
+            customer.Sites.Single());
+
+        Party partner = Party.CreateOrganization("Contoso Delivery");
+        partner.AddRole(PartyRoleType.BusinessPartner);
+        partner.AssignToBranch(branch);
+        workOrder.AssignBusinessPartner(partner);
+
+        Assert.Equal(partner.Id, workOrder.BusinessPartnerId);
+        Assert.Throws<DomainException>(() => workOrder.AssignBusinessPartner(partner));
+
+        WorkOrder noPartnerWork = WorkOrder.CreateFromWon(
+            CreateWonOpportunity(branch, customer, customer.Sites.Single()),
+            branch,
+            customer,
+            customer.Sites.Single());
+        Party customerOnly = Party.CreateOrganization("Customer Only");
+        customerOnly.AddRole(PartyRoleType.Customer);
+        customerOnly.AssignToBranch(branch);
+        Assert.Throws<DomainException>(() => noPartnerWork.AssignBusinessPartner(customer));
+        Assert.Throws<DomainException>(() => noPartnerWork.AssignBusinessPartner(customerOnly));
+
+        Branch foreignBranch = Branch.Create("Remote Office");
+        Party foreignPartner = Party.CreateOrganization("Remote Delivery");
+        foreignPartner.AddRole(PartyRoleType.BusinessPartner);
+        foreignPartner.AssignToBranch(foreignBranch);
+        Assert.Throws<DomainException>(() => noPartnerWork.AssignBusinessPartner(foreignPartner));
+    }
+
     private static WorkOrder CreateAt(WorkOrderStatus status, bool includeCompletionEvent = false)
     {
         Branch branch = Branch.Create("Harbor Office");

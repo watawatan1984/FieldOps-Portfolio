@@ -10,6 +10,7 @@ public sealed class SharedLayoutTests
         Assert.Contains("<title>@ViewData[\"Title\"] - FieldOps Portal</title>", layout, StringComparison.Ordinal);
         Assert.Contains(">FieldOps Portal</a>", layout, StringComparison.Ordinal);
         Assert.Contains("&copy; 2026 - FieldOps Portal -", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"/work-history\"", layout, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

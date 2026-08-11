@@ -21,6 +21,11 @@ public sealed class WorkHistoryController(
         [FromQuery] WorkHistorySearchViewModel model,
         CancellationToken cancellationToken)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
         bool canSelectBranch = User.IsInRole(DemoRoleNames.SystemAdministrator);
         if (!model.BranchId.HasValue && !canSelectBranch)
         {
@@ -65,11 +70,6 @@ public sealed class WorkHistoryController(
             {
                 return Forbid();
             }
-        }
-
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(ModelState);
         }
 
         try

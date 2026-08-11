@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text;
 
 using FieldOps.Domain.Entities;
 using FieldOps.Domain.Enums;
@@ -57,9 +56,7 @@ public sealed class WorkHistorySearch(
         }
         if (criteria.BusinessPartnerId.HasValue)
         {
-            query = query.Where(workOrder => workOrder.PartyId == criteria.BusinessPartnerId.Value &&
-                dbContext.Parties.Any(party => party.Id == workOrder.PartyId &&
-                    party.Roles.Any(role => role.RoleType == PartyRoleType.BusinessPartner)));
+            query = query.Where(workOrder => workOrder.BusinessPartnerId == criteria.BusinessPartnerId.Value);
         }
         if (criteria.SiteId.HasValue)
         {
@@ -118,11 +115,20 @@ public sealed class WorkHistorySearch(
             string keywordPattern = $"%{EscapeLikePattern(criteria.Keyword)}%";
             query = query.Where(workOrder =>
                 dbContext.Parties.Any(party => party.Id == workOrder.PartyId &&
-                    (EF.Functions.ILike(party.OrganizationName ?? string.Empty, keywordPattern, "\\") ||
-                     EF.Functions.ILike((party.LastName ?? string.Empty) + ", " + (party.FirstName ?? string.Empty), keywordPattern, "\\"))) ||
+                    EF.Functions.ILike(
+                        EF.Property<string>(party, SearchTextNormalization.PropertyName),
+                        keywordPattern,
+                        "\\")) ||
                 dbContext.Parties.SelectMany(party => party.Sites).Any(site =>
-                    site.Id == workOrder.SiteId && EF.Functions.ILike(site.Name, keywordPattern, "\\")) ||
-                workOrder.Events.Any(workEvent => EF.Functions.ILike(workEvent.Summary, keywordPattern, "\\")));
+                    site.Id == workOrder.SiteId &&
+                    EF.Functions.ILike(
+                        EF.Property<string>(site, SearchTextNormalization.PropertyName),
+                        keywordPattern,
+                        "\\")) ||
+                workOrder.Events.Any(workEvent => EF.Functions.ILike(
+                    EF.Property<string>(workEvent, SearchTextNormalization.PropertyName),
+                    keywordPattern,
+                    "\\")));
         }
 
         int totalCount = await query.CountAsync(cancellationToken);
@@ -229,16 +235,7 @@ public sealed class WorkHistorySearch(
         return new WorkHistoryFilterOptions(branches, customers, businessPartners, sites, technicians);
     }
 
-    public static string? NormalizeKeyword(string? keyword)
-    {
-        if (string.IsNullOrWhiteSpace(keyword))
-        {
-            return null;
-        }
-
-        string normalized = keyword.Normalize(NormalizationForm.FormKC).Trim();
-        return string.Join(' ', normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-    }
+    public static string? NormalizeKeyword(string? keyword) => SearchTextNormalization.Normalize(keyword);
 
     private static string EscapeLikePattern(string value) =>
         value.Replace("\\", "\\\\", StringComparison.Ordinal)
