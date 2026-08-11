@@ -39,6 +39,7 @@ public sealed class WorkOrderEditInput
 {
     public Guid Id { get; set; }
     public uint Version { get; set; }
+    public WorkOrderStatus Status { get; set; }
 
     [Required]
     [Display(Name = "Assigned technician")]

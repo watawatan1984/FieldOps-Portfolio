@@ -98,10 +98,10 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
             Party party = Party.CreateOrganization("Fictional Work Services");
             party.AssignToBranch(branch);
             party.AddSite(branch, "Fictional Plant");
-            WorkOrder workOrder = WorkOrder.Create(branch, party, party.Sites.Single());
+            (SalesOpportunity opportunity, WorkOrder workOrder) = TestWorkOrderFactory.CreateFromWon(branch, party, party.Sites.Single());
             workOrder.AddEvent(WorkEventType.Arrival, new DateTime(2026, 8, 11, 1, 30, 0, DateTimeKind.Utc), "Technician arrived", "fictional.tech");
 
-            arrangeContext.AddRange(branch, party, workOrder);
+            arrangeContext.AddRange(branch, party, opportunity, workOrder);
             await arrangeContext.SaveChangesAsync();
             workOrderId = workOrder.Id;
         }
@@ -128,10 +128,10 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
             Party party = Party.CreateOrganization("Fictional Bulk Delete Services");
             party.AssignToBranch(branch);
             party.AddSite(branch, "Fictional Bulk Delete Site");
-            WorkOrder workOrder = WorkOrder.Create(branch, party, party.Sites.Single());
+            (SalesOpportunity opportunity, WorkOrder workOrder) = TestWorkOrderFactory.CreateFromWon(branch, party, party.Sites.Single());
             workOrder.AddEvent(WorkEventType.Note, new DateTime(2026, 8, 11, 2, 0, 0, DateTimeKind.Utc), "Historical note", "fictional.bulk.user");
 
-            arrangeContext.AddRange(branch, party, workOrder);
+            arrangeContext.AddRange(branch, party, opportunity, workOrder);
             await arrangeContext.SaveChangesAsync();
         }
 
@@ -223,7 +223,7 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
             Party party = Party.CreateOrganization("Fictional Reset Services");
             party.AssignToBranch(branch);
             party.AddSite(branch, "Fictional Reset Site");
-            WorkOrder workOrder = WorkOrder.Create(branch, party, party.Sites.Single());
+            (SalesOpportunity opportunity, WorkOrder workOrder) = TestWorkOrderFactory.CreateFromWon(branch, party, party.Sites.Single());
             workOrder.AddEvent(WorkEventType.Note, new DateTime(2026, 8, 11, 2, 45, 0, DateTimeKind.Utc), "Resettable demo history", "fictional.reset.user");
             AuditEntry auditEntry = new(
                 nameof(WorkOrder),
@@ -232,7 +232,7 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
                 new DateTime(2026, 8, 11, 2, 45, 0, DateTimeKind.Utc),
                 "fictional.reset.user");
 
-            arrangeContext.AddRange(branch, party, workOrder, auditEntry);
+            arrangeContext.AddRange(branch, party, opportunity, workOrder, auditEntry);
             await arrangeContext.SaveChangesAsync();
         }
 
@@ -353,7 +353,7 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
             Party party = Party.CreateOrganization("Fictional UTC Services");
             party.AssignToBranch(branch);
             party.AddSite(branch, "Fictional UTC Site");
-            WorkOrder workOrder = WorkOrder.Create(branch, party, party.Sites.Single());
+            (SalesOpportunity opportunity, WorkOrder workOrder) = TestWorkOrderFactory.CreateFromWon(branch, party, party.Sites.Single());
             workOrder.Schedule(scheduledStartUtc, occurredAtUtc);
             workOrder.AddEvent(WorkEventType.Note, occurredAtUtc, "UTC evidence", "fictional.utc.user");
             AuditEntry auditEntry = new(
@@ -363,7 +363,7 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
                 occurredAtUtc,
                 "fictional.utc.user");
 
-            arrangeContext.AddRange(branch, party, workOrder, auditEntry);
+            arrangeContext.AddRange(branch, party, opportunity, workOrder, auditEntry);
             await arrangeContext.SaveChangesAsync();
             workOrderId = workOrder.Id;
         }

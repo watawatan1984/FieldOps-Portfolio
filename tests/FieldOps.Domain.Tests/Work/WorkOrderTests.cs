@@ -2,10 +2,24 @@ using FieldOps.Domain.Common;
 using FieldOps.Domain.Entities;
 using FieldOps.Domain.Enums;
 
+using System.Reflection;
+
 namespace FieldOps.Domain.Tests.Work;
 
 public sealed class WorkOrderTests
 {
+    [Fact]
+    public void CreationInterface_ExposesOnlyWonOpportunityFactory()
+    {
+        MethodInfo[] publicFactories = typeof(WorkOrder).GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Where(method => method.ReturnType == typeof(WorkOrder))
+            .ToArray();
+
+        MethodInfo factory = Assert.Single(publicFactories);
+        Assert.Equal("CreateFromWon", factory.Name);
+        Assert.Equal(typeof(SalesOpportunity), factory.GetParameters()[0].ParameterType);
+    }
+
     public static TheoryData<WorkOrderStatus, WorkOrderStatus> AllowedTransitions =>
         new()
         {
@@ -119,29 +133,65 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
-    public void Create_RequiresPartyAndSiteToBelongToTheBranch()
+    public void AddEvent_AcceptsCompletionEvidenceOnlyWhileWorkIsInProgress()
+    {
+        WorkOrder planned = CreateAt(WorkOrderStatus.Planned);
+        WorkOrder scheduled = CreateAt(WorkOrderStatus.Scheduled);
+        WorkOrder inProgress = CreateAt(WorkOrderStatus.InProgress);
+
+        Assert.Throws<DomainException>(() =>
+            planned.AddEvent(WorkEventType.Completion, Utc(11), "Completed too early", "operator-42"));
+        Assert.Throws<DomainException>(() =>
+            scheduled.AddEvent(WorkEventType.Completion, Utc(11), "Completed too early", "operator-42"));
+
+        inProgress.AddEvent(WorkEventType.Completion, Utc(11), "Completion evidence", "operator-42");
+
+        Assert.Single(inProgress.Events);
+    }
+
+    [Fact]
+    public void AddEvent_EnforcesTerminalHistoryRules()
+    {
+        WorkOrder completed = CreateAt(WorkOrderStatus.Completed, includeCompletionEvent: true);
+        WorkOrder cancelled = CreateAt(WorkOrderStatus.Cancelled);
+        WorkOrder planned = CreateAt(WorkOrderStatus.Planned);
+
+        Assert.Throws<DomainException>(() =>
+            completed.AddEvent(WorkEventType.Note, Utc(12), "Rewrite attempt", "operator-42"));
+        Assert.Throws<DomainException>(() =>
+            cancelled.AddEvent(WorkEventType.Note, Utc(12), "Late note", "operator-42"));
+        Assert.Throws<DomainException>(() =>
+            planned.AddEvent(WorkEventType.Correction, Utc(12), "Premature correction", "operator-42"));
+
+        completed.AddEvent(WorkEventType.Correction, Utc(12), "Append-only correction", "administrator-42");
+
+        Assert.Equal(2, completed.Events.Count);
+    }
+
+    [Fact]
+    public void CreateFromWon_RequiresTheOpportunityBranchPartyAndSite()
     {
         Branch branch = Branch.Create("Harbor Office");
-        Party unassignedParty = Party.CreateOrganization("Northwind Service Works");
-        Branch unassignedBranch = Branch.Create("Remote Office");
-        unassignedParty.AssignToBranch(unassignedBranch);
-        unassignedParty.AddSite(unassignedBranch, "Pier 8 Workshop");
-
-        Assert.Throws<DomainException>(() => WorkOrder.Create(branch, unassignedParty, unassignedParty.Sites.Single()));
-
         Party assignedParty = Party.CreateOrganization("Northwind Service Works");
         assignedParty.AssignToBranch(branch);
+        assignedParty.AddSite(branch, "Pier 8 Workshop");
+        Site site = assignedParty.Sites.Single();
+        SalesOpportunity opportunity = CreateWonOpportunity(branch, assignedParty, site);
+
         Party otherParty = Party.CreateOrganization("Contoso Facilities");
         otherParty.AssignToBranch(branch);
         otherParty.AddSite(branch, "Pier 8 Workshop");
-
-        Assert.Throws<DomainException>(() => WorkOrder.Create(branch, assignedParty, otherParty.Sites.Single()));
-
         Branch otherBranch = Branch.Create("Remote Office");
         assignedParty.AssignToBranch(otherBranch);
         assignedParty.AddSite(otherBranch, "Remote Workshop");
 
-        Assert.Throws<DomainException>(() => WorkOrder.Create(branch, assignedParty, assignedParty.Sites.Single(site => site.BranchId == otherBranch.Id)));
+        Assert.Throws<DomainException>(() => WorkOrder.CreateFromWon(opportunity, otherBranch, assignedParty, site));
+        Assert.Throws<DomainException>(() => WorkOrder.CreateFromWon(opportunity, branch, otherParty, site));
+        Assert.Throws<DomainException>(() => WorkOrder.CreateFromWon(
+            opportunity,
+            branch,
+            assignedParty,
+            assignedParty.Sites.Single(item => item.BranchId == otherBranch.Id)));
     }
 
     [Fact]
@@ -169,12 +219,8 @@ public sealed class WorkOrderTests
         Party party = Party.CreateOrganization("Northwind Service Works");
         party.AssignToBranch(branch);
         party.AddSite(branch, "Pier 8 Workshop");
-        WorkOrder workOrder = WorkOrder.Create(branch, party, party.Sites.Single());
-
-        if (includeCompletionEvent)
-        {
-            workOrder.AddEvent(WorkEventType.Completion, Utc(11), "Work completed", "operator-42");
-        }
+        Site site = party.Sites.Single();
+        WorkOrder workOrder = WorkOrder.CreateFromWon(CreateWonOpportunity(branch, party, site), branch, party, site);
 
         foreach (WorkOrderStatus next in PathTo(status))
         {
@@ -184,11 +230,38 @@ public sealed class WorkOrderTests
             }
             else
             {
+                if (next == WorkOrderStatus.Completed && includeCompletionEvent)
+                {
+                    workOrder.AddEvent(WorkEventType.Completion, Utc(11), "Work completed", "operator-42");
+                }
                 workOrder.MoveTo(next, Utc(10));
             }
         }
 
+        if (includeCompletionEvent && status == WorkOrderStatus.InProgress)
+        {
+            workOrder.AddEvent(WorkEventType.Completion, Utc(11), "Work completed", "operator-42");
+        }
+
         return workOrder;
+    }
+
+    private static SalesOpportunity CreateWonOpportunity(Branch branch, Party party, Site site)
+    {
+        SalesOpportunity opportunity = SalesOpportunity.Create(branch, party, site);
+        opportunity.SetProposal(1000m, new DateTime(2026, 9, 1));
+        foreach (SalesOpportunityStatus status in new[]
+        {
+            SalesOpportunityStatus.Contacted,
+            SalesOpportunityStatus.SurveyScheduled,
+            SalesOpportunityStatus.Quoting,
+            SalesOpportunityStatus.Proposed,
+            SalesOpportunityStatus.Won
+        })
+        {
+            opportunity.MoveTo(status, Utc(10));
+        }
+        return opportunity;
     }
 
     private static IEnumerable<WorkOrderStatus> PathTo(WorkOrderStatus status) => status switch

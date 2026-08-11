@@ -93,6 +93,10 @@ public sealed class WorkOrdersController(
         if (denied is not null) return denied;
         WorkOrderEditInput? input = await queries.GetEditAsync(id, cancellationToken);
         if (input is null) return NotFound();
+        if (input.Status != FieldOps.Domain.Enums.WorkOrderStatus.Planned)
+        {
+            return RedirectToAction(nameof(Details), new { id });
+        }
         ViewData["EditorOptions"] = await queries.GetEditorOptionsAsync(id, cancellationToken);
         return View(input);
     }
@@ -105,6 +109,16 @@ public sealed class WorkOrdersController(
         if (id != input.Id) return BadRequest();
         IActionResult? denied = await AuthorizeWorkOrderAsync(id, BranchResourceAction.ManageWorkOrders, cancellationToken);
         if (denied is not null) return denied;
+        WorkOrderEditInput? current = await queries.GetEditAsync(id, cancellationToken);
+        if (current is null) return NotFound();
+        if (current.Status != FieldOps.Domain.Enums.WorkOrderStatus.Planned)
+        {
+            return await DetailsWithOutcomeAsync(
+                id,
+                StatusCodes.Status409Conflict,
+                cancellationToken,
+                "This work order is no longer planned and cannot be scheduled again.");
+        }
         ViewData["EditorOptions"] = await queries.GetEditorOptionsAsync(id, cancellationToken);
         if (!ModelState.IsValid)
         {
@@ -122,8 +136,16 @@ public sealed class WorkOrdersController(
             if (currentDenied is not null) return currentDenied;
             WorkOrderEditInput? latest = await queries.GetEditAsync(id, cancellationToken);
             if (latest is null) return NotFound();
-            input.Version = latest.Version;
-            ModelState.Remove(nameof(input.Version));
+            if (latest.Status != FieldOps.Domain.Enums.WorkOrderStatus.Planned)
+            {
+                return await DetailsWithOutcomeAsync(
+                    id,
+                    StatusCodes.Status409Conflict,
+                    cancellationToken,
+                    "This work order is no longer planned and cannot be scheduled again.");
+            }
+            input = latest;
+            ModelState.Clear();
             ModelState.AddModelError(string.Empty, "This work order changed after you opened the form. Review the latest version and retry.");
             Response.StatusCode = StatusCodes.Status409Conflict;
             return View(input);

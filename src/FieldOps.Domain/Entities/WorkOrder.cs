@@ -41,9 +41,7 @@ public sealed class WorkOrder : Entity
 
     public IReadOnlyList<WorkEvent> Events => _events.AsReadOnly();
 
-    public static WorkOrder Create(Branch branch, Party party, Site site) => new(branch, party, site, null);
-
-    public static WorkOrder CreateFromOpportunity(SalesOpportunity opportunity, Branch branch, Party party, Site site)
+    public static WorkOrder CreateFromWon(SalesOpportunity opportunity, Branch branch, Party party, Site site)
     {
         ArgumentNullException.ThrowIfNull(opportunity);
         if (opportunity.Status != SalesOpportunityStatus.Won)
@@ -66,6 +64,23 @@ public sealed class WorkOrder : Entity
 
     public void AddEvent(WorkEventType eventType, DateTime occurredAtUtc, string summary, string actorUserId)
     {
+        if (eventType == WorkEventType.Completion && Status != WorkOrderStatus.InProgress)
+        {
+            throw new DomainException("A completion event can be added only while the WorkOrder is InProgress.");
+        }
+        if (Status == WorkOrderStatus.Completed && eventType != WorkEventType.Correction)
+        {
+            throw new DomainException("Completed work accepts only an append-only correction event.");
+        }
+        if (Status == WorkOrderStatus.Cancelled)
+        {
+            throw new DomainException("Cancelled work does not accept new events.");
+        }
+        if (eventType == WorkEventType.Correction && Status != WorkOrderStatus.Completed)
+        {
+            throw new DomainException("A correction event can be added only to completed work.");
+        }
+
         _events.Add(new WorkEvent(Id, eventType, occurredAtUtc, BranchId, summary, actorUserId));
         Touch();
     }

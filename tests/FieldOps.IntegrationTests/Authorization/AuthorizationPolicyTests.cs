@@ -295,20 +295,23 @@ public sealed class AuthorizationPolicyTests(PostgresFixture postgres)
         Party centralParty = Party.CreateOrganization("Fictional Central Authorization Customer");
         centralParty.AssignToBranch(centralBranch);
         centralParty.AddSite(centralBranch, "Fictional Central Authorization Site");
-        SalesOpportunity centralSales = SalesOpportunity.Create(centralBranch, centralParty, centralParty.Sites.Single());
+        (SalesOpportunity centralSales, WorkOrder centralWork) = TestWorkOrderFactory.CreateFromWon(
+            centralBranch, centralParty, centralParty.Sites.Single());
         centralSales.AssignOwner(salesUser.Id);
-        WorkOrder centralWork = WorkOrder.Create(centralBranch, centralParty, centralParty.Sites.Single());
 
         Party fieldParty = Party.CreateOrganization("Fictional Field Authorization Customer");
         fieldParty.AssignToBranch(fieldBranch);
         fieldParty.AddSite(fieldBranch, "Fictional Field Authorization Site");
-        SalesOpportunity fieldSales = SalesOpportunity.Create(fieldBranch, fieldParty, fieldParty.Sites.Single());
+        (SalesOpportunity fieldSales, WorkOrder fieldWork) = TestWorkOrderFactory.CreateFromWon(
+            fieldBranch, fieldParty, fieldParty.Sites.Single());
         fieldSales.AssignToUser(technician.Id);
-        WorkOrder fieldWork = WorkOrder.Create(fieldBranch, fieldParty, fieldParty.Sites.Single());
         fieldWork.AssignToUser(technician.Id);
-        WorkOrder unassignedFieldWork = WorkOrder.Create(fieldBranch, fieldParty, fieldParty.Sites.Single());
+        (SalesOpportunity unassignedFieldSales, WorkOrder unassignedFieldWork) = TestWorkOrderFactory.CreateFromWon(
+            fieldBranch, fieldParty, fieldParty.Sites.Single());
 
-        dbContext.AddRange(centralParty, centralSales, centralWork, fieldParty, fieldSales, fieldWork, unassignedFieldWork);
+        dbContext.AddRange(
+            centralParty, centralSales, centralWork,
+            fieldParty, fieldSales, fieldWork, unassignedFieldSales, unassignedFieldWork);
         await dbContext.SaveChangesAsync();
         return new ResourceIds(
             centralBranchId,

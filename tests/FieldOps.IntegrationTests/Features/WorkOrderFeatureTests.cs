@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 
 using FieldOps.Domain.Entities;
 using FieldOps.Domain.Enums;
+using FieldOps.Features.Abstractions;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 using FieldOps.IntegrationTests.Infrastructure;
@@ -10,6 +11,7 @@ using FieldOps.IntegrationTests.Infrastructure;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Npgsql;
 
@@ -158,7 +160,7 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
             {
                 ["Version"] = version,
                 ["EventType"] = WorkEventType.Completion.ToString(),
-                ["OccurredAtUtc"] = "2026-09-20T03:15:00Z",
+                ["OccurredAtUtc"] = "2026-08-11T03:15:00Z",
                 ["Summary"] = "Fictional service completed and site secured.",
                 ["__RequestVerificationToken"] = token
             }));
@@ -312,12 +314,49 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
             ScheduleForm(id, version, seed.CentralTechnicianUserId, token));
         string staleHtml = await stale.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
-        Assert.Contains("Review the latest version", staleHtml);
-        Assert.NotEqual(version, GetInputValue(staleHtml, "Version"));
+        Assert.Contains("no longer planned", staleHtml);
+        Assert.Contains(WorkOrderStatus.Scheduled.ToString(), staleHtml);
+        Assert.DoesNotContain("Schedule work order", staleHtml);
+        using HttpResponseMessage editAfterScheduled = await client.GetAsync($"/work-orders/{id}/edit");
+        Assert.Equal(HttpStatusCode.Redirect, editAfterScheduled.StatusCode);
+        Assert.Equal($"/work-orders/{id}", editAfterScheduled.Headers.Location?.OriginalString);
 
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Assert.Single(await dbContext.AuditEntries.Where(entry => entry.AggregateId == id && entry.Action == "ScheduledAndAssigned").ToListAsync());
+    }
+
+    [Fact]
+    public async Task PlannedScheduleConflictReloadsPersistedFieldsAndCurrentVersion()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+        Guid id = await CreateThroughHttpAsync(client, seed.WonOpportunityId);
+        (string token, string staleVersion, _) = await GetPageFormAsync(client, $"/work-orders/{id}/edit");
+        await using (AsyncServiceScope raceScope = application.Services.CreateAsyncScope())
+        {
+            FieldOpsDbContext raceContext = raceScope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+            WorkOrder concurrentlyAssigned = await raceContext.WorkOrders.SingleAsync(item => item.Id == id);
+            concurrentlyAssigned.AssignToUser(seed.CentralTechnicianUserId);
+            await raceContext.SaveChangesAsync();
+        }
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/work-orders/{id}/edit",
+            ScheduleForm(id, staleVersion, "stale-posted-technician", token));
+        string html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("Review the latest version", html);
+        Assert.NotEqual(staleVersion, GetInputValue(html, "Version"));
+        Assert.DoesNotContain("stale-posted-technician", html);
+        Assert.Empty(GetInputValue(html, "ScheduledStartUtc"));
+        Assert.Matches(
+            $"<option(?=[^>]*value=\"{Regex.Escape(seed.CentralTechnicianUserId)}\")(?=[^>]*selected)[^>]*>",
+            html);
     }
 
     [Fact]
@@ -345,7 +384,7 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         Assert.DoesNotContain($"value=\"{WorkEventType.Completion}\"", addHtml);
         using HttpResponseMessage corrected = await client.PostAsync(
             $"/work-orders/{id}/events/add",
-            EventForm(version, WorkEventType.Correction, "Fictional correction: completion reference clarified.", token, "2026-09-20T04:15:00Z"));
+            EventForm(version, WorkEventType.Correction, "Fictional correction: completion reference clarified.", token, "2026-08-11T04:15:00Z"));
         Assert.Equal(HttpStatusCode.Redirect, corrected.StatusCode);
         using HttpResponseMessage details = await client.GetAsync($"/work-orders/{id}");
         string detailsHtml = await details.Content.ReadAsStringAsync();
@@ -369,6 +408,184 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Assert.Equal(2, await dbContext.WorkOrders.Where(item => item.Id == id).SelectMany(item => item.Events).CountAsync());
         Assert.Single(await dbContext.AuditEntries.Where(entry => entry.AggregateId == id && entry.Action == "CorrectionAdded").ToListAsync());
+    }
+
+    [Fact]
+    public async Task FutureDatedWorkEventIsRejectedUsingInjectedUtcClock()
+    {
+        DateTimeOffset currentUtc = new(2026, 9, 20, 3, 30, 0, TimeSpan.Zero);
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            services => services.AddSingleton<TimeProvider>(new FixedTimeProvider(currentUtc)));
+        using HttpClient client = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.SystemAdministrator);
+        Guid id = await CreateThroughHttpAsync(client, seed.WonOpportunityId);
+        await ScheduleThroughHttpAsync(client, id, seed.CentralTechnicianUserId);
+        await TransitionThroughHttpAsync(client, id, WorkOrderStatus.InProgress);
+        (string token, string version, _) = await GetPageFormAsync(client, $"/work-orders/{id}/events/add");
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/work-orders/{id}/events/add",
+            EventForm(version, WorkEventType.Completion, "Fictional future completion evidence.", token, "2026-09-20T03:31:00Z"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.Empty(await dbContext.WorkOrders.Where(item => item.Id == id).SelectMany(item => item.Events).ToListAsync());
+        Assert.Empty(await dbContext.AuditEntries.Where(entry => entry.AggregateId == id && entry.Action == "WorkEventAdded").ToListAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentDuplicateCreateHasOneWinnerAndOneConflict()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient firstClient = CreateClient(application);
+        using HttpClient secondClient = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(firstClient, DemoRoleNames.SystemAdministrator);
+        await LoginAsAsync(secondClient, DemoRoleNames.SystemAdministrator);
+        string firstToken = await GetAntiforgeryTokenAsync(firstClient, $"/sales/{seed.WonOpportunityId}");
+        string secondToken = await GetAntiforgeryTokenAsync(secondClient, $"/sales/{seed.WonOpportunityId}");
+
+        Task<HttpResponseMessage> firstTask = firstClient.PostAsync(
+            $"/work-orders/from-opportunity/{seed.WonOpportunityId}",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = firstToken }));
+        Task<HttpResponseMessage> secondTask = secondClient.PostAsync(
+            $"/work-orders/from-opportunity/{seed.WonOpportunityId}",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = secondToken }));
+        HttpResponseMessage[] responses = await Task.WhenAll(firstTask, secondTask);
+        using (responses[0])
+        using (responses[1])
+        {
+            Assert.Equal(
+                [HttpStatusCode.Redirect, HttpStatusCode.Conflict],
+                responses.Select(response => response.StatusCode).OrderBy(status => status).ToArray());
+        }
+
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        WorkOrder workOrder = await dbContext.WorkOrders.SingleAsync();
+        Assert.Equal(seed.WonOpportunityId, workOrder.SalesOpportunityId);
+        Assert.Single(await dbContext.AuditEntries.Where(entry => entry.AggregateId == workOrder.Id && entry.Action == "Created").ToListAsync());
+    }
+
+    [Fact]
+    public async Task SimultaneousCompletionTransitionsHaveOneWinnerAndOneRetryableConflict()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient firstClient = CreateClient(application);
+        using HttpClient secondClient = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(firstClient, DemoRoleNames.SystemAdministrator);
+        await LoginAsAsync(secondClient, DemoRoleNames.SystemAdministrator);
+        Guid id = await CreateThroughHttpAsync(firstClient, seed.WonOpportunityId);
+        await ScheduleThroughHttpAsync(firstClient, id, seed.CentralTechnicianUserId);
+        await TransitionThroughHttpAsync(firstClient, id, WorkOrderStatus.InProgress);
+        await AddEventThroughHttpAsync(firstClient, id, WorkEventType.Completion, "Fictional completion race evidence.");
+        (string firstToken, string firstVersion, _) = await GetPageFormAsync(firstClient, $"/work-orders/{id}");
+        (string secondToken, string secondVersion, _) = await GetPageFormAsync(secondClient, $"/work-orders/{id}");
+        Assert.Equal(firstVersion, secondVersion);
+
+        Task<HttpResponseMessage> firstTask = firstClient.PostAsync(
+            $"/work-orders/{id}/transition",
+            TransitionForm(firstVersion, WorkOrderStatus.Completed, firstToken));
+        Task<HttpResponseMessage> secondTask = secondClient.PostAsync(
+            $"/work-orders/{id}/transition",
+            TransitionForm(secondVersion, WorkOrderStatus.Completed, secondToken));
+        HttpResponseMessage[] responses = await Task.WhenAll(firstTask, secondTask);
+        using (responses[0])
+        using (responses[1])
+        {
+            Assert.Equal(
+                [HttpStatusCode.Redirect, HttpStatusCode.Conflict],
+                responses.Select(response => response.StatusCode).OrderBy(status => status).ToArray());
+            Assert.Contains("latest version", await responses.Single(response => response.StatusCode == HttpStatusCode.Conflict).Content.ReadAsStringAsync());
+        }
+
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.Equal(WorkOrderStatus.Completed, await dbContext.WorkOrders.Where(item => item.Id == id).Select(item => item.Status).SingleAsync());
+        Assert.Equal(2, await dbContext.AuditEntries.CountAsync(entry => entry.AggregateId == id && entry.Action == "StatusChanged"));
+    }
+
+    [Fact]
+    public async Task StaleWorkEventSubmissionHasOneWinnerAndOneRetryableConflict()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient firstClient = CreateClient(application);
+        using HttpClient secondClient = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(firstClient, DemoRoleNames.SystemAdministrator);
+        await LoginAsAsync(secondClient, DemoRoleNames.SystemAdministrator);
+        Guid id = await CreateThroughHttpAsync(firstClient, seed.WonOpportunityId);
+        await ScheduleThroughHttpAsync(firstClient, id, seed.CentralTechnicianUserId);
+        await TransitionThroughHttpAsync(firstClient, id, WorkOrderStatus.InProgress);
+        (string firstToken, string firstVersion, _) = await GetPageFormAsync(firstClient, $"/work-orders/{id}/events/add");
+        (string secondToken, string secondVersion, _) = await GetPageFormAsync(secondClient, $"/work-orders/{id}/events/add");
+        Assert.Equal(firstVersion, secondVersion);
+
+        Task<HttpResponseMessage> firstTask = firstClient.PostAsync(
+            $"/work-orders/{id}/events/add",
+            EventForm(firstVersion, WorkEventType.Note, "Fictional first concurrent note.", firstToken));
+        Task<HttpResponseMessage> secondTask = secondClient.PostAsync(
+            $"/work-orders/{id}/events/add",
+            EventForm(secondVersion, WorkEventType.Note, "Fictional second concurrent note.", secondToken));
+        HttpResponseMessage[] responses = await Task.WhenAll(firstTask, secondTask);
+        using (responses[0])
+        using (responses[1])
+        {
+            Assert.Equal(
+                [HttpStatusCode.Redirect, HttpStatusCode.Conflict],
+                responses.Select(response => response.StatusCode).OrderBy(status => status).ToArray());
+            string conflictHtml = await responses.Single(response => response.StatusCode == HttpStatusCode.Conflict).Content.ReadAsStringAsync();
+            Assert.Contains("latest version", conflictHtml);
+        }
+
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.Single(await dbContext.WorkOrders.Where(item => item.Id == id).SelectMany(item => item.Events).ToListAsync());
+        Assert.Single(await dbContext.AuditEntries.Where(entry => entry.AggregateId == id && entry.Action == "WorkEventAdded").ToListAsync());
+    }
+
+    [Fact]
+    public async Task TechnicianAssignmentChangeAfterControllerAuthorizationReturnsForbiddenWithoutRequestedMutation()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        AssignmentRacePlan plan = new(connectionString);
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            services =>
+            {
+                services.RemoveAll<IMutationExecutor>();
+                services.AddScoped<IMutationExecutor>(provider => new AssignmentChangingMutationExecutor(
+                    provider.GetRequiredService<FieldOpsDbContext>(),
+                    plan));
+            });
+        using HttpClient client = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+        Guid id = await CreateThroughHttpAsync(client, seed.WonOpportunityId);
+        await ScheduleThroughHttpAsync(client, id, seed.CentralTechnicianUserId);
+        await LoginAsAsync(client, DemoRoleNames.FieldTechnician);
+        (string token, string version, _) = await GetPageFormAsync(client, $"/work-orders/{id}");
+        plan.Arm(id);
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/work-orders/{id}/transition",
+            TransitionForm(version, WorkOrderStatus.InProgress, token));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        WorkOrder current = await dbContext.WorkOrders.SingleAsync(item => item.Id == id);
+        Assert.Null(current.AssignedUserId);
+        Assert.Equal(WorkOrderStatus.Scheduled, current.Status);
+        Assert.Empty(await dbContext.AuditEntries.Where(entry => entry.AggregateId == id && entry.Action == "StatusChanged").ToListAsync());
     }
 
     private static async Task<WorkSeed> SeedAsync(FieldOpsWebApplicationFactory application)
@@ -425,13 +642,15 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         centralParty.AddRole(PartyRoleType.Customer);
         centralParty.AssignToBranch(central);
         centralParty.AddSite(central, "Fictional Central Backlog Site");
-        WorkOrder centralWork = WorkOrder.Create(central, centralParty, centralParty.Sites.Single());
+        (SalesOpportunity centralOpportunity, WorkOrder centralWork) = TestWorkOrderFactory.CreateFromWon(
+            central, centralParty, centralParty.Sites.Single());
         Party otherParty = Party.CreateOrganization("Fictional Other Branch Customer");
         otherParty.AddRole(PartyRoleType.Customer);
         otherParty.AssignToBranch(other);
         otherParty.AddSite(other, "Fictional Other Branch Site");
-        WorkOrder otherWork = WorkOrder.Create(other, otherParty, otherParty.Sites.Single());
-        dbContext.AddRange(centralParty, centralWork, otherParty, otherWork);
+        (SalesOpportunity otherOpportunity, WorkOrder otherWork) = TestWorkOrderFactory.CreateFromWon(
+            other, otherParty, otherParty.Sites.Single());
+        dbContext.AddRange(centralParty, centralOpportunity, centralWork, otherParty, otherOpportunity, otherWork);
         await dbContext.SaveChangesAsync();
         return (centralWork.Id, otherWork.Id);
     }
@@ -520,7 +739,7 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         WorkEventType type,
         string summary,
         string token,
-        string occurredAtUtc = "2026-09-20T03:15:00Z") =>
+        string occurredAtUtc = "2026-08-11T03:15:00Z") =>
         new(new Dictionary<string, string>
         {
             ["Version"] = version,
@@ -575,4 +794,57 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         Regex.Match(html, $"<input(?=[^>]*id=\"{Regex.Escape(id)}\")(?=[^>]*value=\"([^\"]*)\")[^>]*>", RegexOptions.IgnoreCase).Groups[1].Value;
 
     private sealed record WorkSeed(Guid BranchId, Guid PartyId, Guid SiteId, Guid WonOpportunityId, string CentralTechnicianUserId);
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    private sealed class AssignmentRacePlan(string connectionString)
+    {
+        public string ConnectionString { get; } = connectionString;
+        public Guid WorkOrderId { get; private set; }
+        public bool IsArmed { get; private set; }
+
+        public void Arm(Guid workOrderId)
+        {
+            WorkOrderId = workOrderId;
+            IsArmed = true;
+        }
+
+        public bool Consume(string operation)
+        {
+            if (!IsArmed || operation != "work-order-transition") return false;
+            IsArmed = false;
+            return true;
+        }
+    }
+
+    private sealed class AssignmentChangingMutationExecutor(
+        FieldOpsDbContext dbContext,
+        AssignmentRacePlan plan) : IMutationExecutor
+    {
+        public async Task<TResult> ExecuteAsync<TResult>(
+            string operation,
+            Func<CancellationToken, Task<TResult>> action,
+            CancellationToken cancellationToken = default)
+        {
+            await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+                await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            if (plan.Consume(operation))
+            {
+                await using NpgsqlConnection connection = new(plan.ConnectionString);
+                await connection.OpenAsync(cancellationToken);
+                await using NpgsqlCommand command = connection.CreateCommand();
+                command.CommandText = "UPDATE \"WorkOrders\" SET \"AssignedUserId\" = NULL WHERE \"Id\" = @id";
+                command.Parameters.AddWithValue("id", plan.WorkOrderId);
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            TResult result = await action(cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+    }
 }

@@ -53,7 +53,7 @@ public sealed class WorkOrderCommands(
                         .Include(item => item.Sites)
                         .SingleAsync(item => item.Id == opportunity.PartyId, token);
                     Site site = party.Sites.Single(item => item.Id == opportunity.SiteId);
-                    WorkOrder workOrder = WorkOrder.CreateFromOpportunity(opportunity, branch, party, site);
+                    WorkOrder workOrder = WorkOrder.CreateFromWon(opportunity, branch, party, site);
                     dbContext.WorkOrders.Add(workOrder);
                     auditWriter.Write(
                         nameof(WorkOrder),
@@ -187,6 +187,10 @@ public sealed class WorkOrderCommands(
                     if (input.OccurredAtUtc is not DateTime occurredAtUtc)
                     {
                         throw new Domain.Common.DomainException("A work event timestamp is required.");
+                    }
+                    if (occurredAtUtc > timeProvider.GetUtcNow().UtcDateTime)
+                    {
+                        throw new Domain.Common.DomainException("A work event timestamp cannot be in the future.");
                     }
 
                     workOrder.AddEvent(input.EventType, occurredAtUtc, input.Summary, currentUser.UserId);

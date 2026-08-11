@@ -132,6 +132,7 @@ public sealed class WorkOrderQueries(
             {
                 Id = workOrder.Id,
                 Version = workOrder.Version,
+                Status = workOrder.Status,
                 AssignedUserId = workOrder.AssignedUserId ?? string.Empty,
                 ScheduledStartUtc = workOrder.ScheduledStartUtc
             })
