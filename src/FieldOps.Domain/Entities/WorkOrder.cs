@@ -32,6 +32,8 @@ public sealed class WorkOrder : Entity
 
     public WorkOrderStatus Status { get; private set; }
 
+    public DateTime? ScheduledStartUtc { get; private set; }
+
     public IReadOnlyList<WorkEvent> Events => _events.AsReadOnly();
 
     public static WorkOrder Create(Branch branch, Party party, Site site) => new(branch, party, site);
@@ -42,9 +44,29 @@ public sealed class WorkOrder : Entity
         Touch();
     }
 
+    public void Schedule(DateTime scheduledStartUtc, DateTime occurredAtUtc)
+    {
+        RequireUtc(scheduledStartUtc, "work order scheduled start timestamp");
+        RequireUtc(occurredAtUtc, "work order transition timestamp");
+
+        if (!IsAllowedTransition(Status, WorkOrderStatus.Scheduled))
+        {
+            throw InvalidTransition(Status, WorkOrderStatus.Scheduled);
+        }
+
+        ScheduledStartUtc = scheduledStartUtc;
+        Status = WorkOrderStatus.Scheduled;
+        Touch();
+    }
+
     public void MoveTo(WorkOrderStatus next, DateTime occurredAtUtc)
     {
         RequireUtc(occurredAtUtc, "work order transition timestamp");
+
+        if (next == WorkOrderStatus.Scheduled && Status == WorkOrderStatus.Planned)
+        {
+            throw new DomainException("A WorkOrder scheduled transition requires a scheduled start timestamp. Use Schedule instead.");
+        }
 
         if (!Enum.IsDefined(next) || !IsAllowedTransition(Status, next))
         {

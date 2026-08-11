@@ -9,7 +9,6 @@ public sealed class WorkOrderTests
     public static TheoryData<WorkOrderStatus, WorkOrderStatus> AllowedTransitions =>
         new()
         {
-            { WorkOrderStatus.Planned, WorkOrderStatus.Scheduled },
             { WorkOrderStatus.Scheduled, WorkOrderStatus.InProgress },
             { WorkOrderStatus.InProgress, WorkOrderStatus.Completed },
             { WorkOrderStatus.Planned, WorkOrderStatus.Cancelled },
@@ -65,6 +64,36 @@ public sealed class WorkOrderTests
         workOrder.MoveTo(WorkOrderStatus.Completed, Utc(12));
 
         Assert.Equal(WorkOrderStatus.Completed, workOrder.Status);
+    }
+
+    [Fact]
+    public void Schedule_SetsUtcStartAndMovesPlannedWorkOrderToScheduled()
+    {
+        WorkOrder workOrder = CreateAt(WorkOrderStatus.Planned);
+        DateTime scheduledStartUtc = Utc(20);
+
+        workOrder.Schedule(scheduledStartUtc, Utc(12));
+
+        Assert.Equal(WorkOrderStatus.Scheduled, workOrder.Status);
+        Assert.Equal(scheduledStartUtc, workOrder.ScheduledStartUtc);
+    }
+
+    [Fact]
+    public void MoveTo_ScheduledRequiresTheSchedulingOperation()
+    {
+        WorkOrder workOrder = CreateAt(WorkOrderStatus.Planned);
+
+        DomainException exception = Assert.Throws<DomainException>(() => workOrder.MoveTo(WorkOrderStatus.Scheduled, Utc(12)));
+
+        Assert.Contains("scheduled start", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Schedule_RequiresUtcScheduledStart()
+    {
+        WorkOrder workOrder = CreateAt(WorkOrderStatus.Planned);
+
+        Assert.Throws<DomainException>(() => workOrder.Schedule(new DateTime(2026, 8, 20, 9, 0, 0), Utc(12)));
     }
 
     [Fact]
@@ -138,7 +167,14 @@ public sealed class WorkOrderTests
 
         foreach (WorkOrderStatus next in PathTo(status))
         {
-            workOrder.MoveTo(next, Utc(10));
+            if (next == WorkOrderStatus.Scheduled)
+            {
+                workOrder.Schedule(Utc(20), Utc(10));
+            }
+            else
+            {
+                workOrder.MoveTo(next, Utc(10));
+            }
         }
 
         return workOrder;

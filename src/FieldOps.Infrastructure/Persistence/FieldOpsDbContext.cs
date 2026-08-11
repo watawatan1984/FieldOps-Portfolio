@@ -15,33 +15,9 @@ public sealed class FieldOpsDbContext(DbContextOptions<FieldOpsDbContext> option
     public DbSet<SalesOpportunity> SalesOpportunities => Set<SalesOpportunity>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
 
-    public override int SaveChanges(bool acceptAllChangesOnSuccess)
-    {
-        EnsureHistoricalRecordsAreAppendOnly();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
-    }
-
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
-    {
-        EnsureHistoricalRecordsAreAppendOnly();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
-    }
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(FieldOpsDbContext).Assembly);
-    }
-
-    private void EnsureHistoricalRecordsAreAppendOnly()
-    {
-        bool deletesHistoricalRecord = ChangeTracker.Entries()
-            .Any(entry => entry.State == EntityState.Deleted &&
-                (entry.Entity is WorkEvent || entry.Entity is AuditEntry));
-
-        if (deletesHistoricalRecord)
-        {
-            throw new InvalidOperationException("Historical work events and audit entries are append-only and cannot be deleted.");
-        }
     }
 }
 

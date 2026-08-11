@@ -10,8 +10,8 @@ internal sealed class WorkOrderConfiguration : EntityConfiguration<WorkOrder>
     protected override void ConfigureEntity(EntityTypeBuilder<WorkOrder> builder)
     {
         builder.ToTable("WorkOrders");
-        builder.Property<DateTime?>("ScheduledStartUtc").HasColumnType("timestamp with time zone");
-        builder.HasIndex([nameof(WorkOrder.BranchId), nameof(WorkOrder.Status), "ScheduledStartUtc"]);
+        builder.Property(workOrder => workOrder.ScheduledStartUtc).HasColumnType("timestamp with time zone");
+        builder.HasIndex(workOrder => new { workOrder.BranchId, workOrder.Status, workOrder.ScheduledStartUtc });
         builder.HasIndex(workOrder => new { workOrder.PartyId, workOrder.SiteId });
         builder.HasOne<Branch>().WithMany().HasForeignKey(workOrder => workOrder.BranchId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Party>().WithMany().HasForeignKey(workOrder => workOrder.PartyId).OnDelete(DeleteBehavior.Restrict);

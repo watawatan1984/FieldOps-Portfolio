@@ -5,6 +5,8 @@ using FieldOps.IntegrationTests.Infrastructure;
 
 using Microsoft.EntityFrameworkCore;
 
+using Npgsql;
+
 namespace FieldOps.IntegrationTests.Persistence;
 
 [Collection(DatabaseCollection.Name)]
@@ -110,7 +112,129 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
             .SingleAsync(workOrder => workOrder.Id == workOrderId);
         deleteContext.Remove(persisted.Events.Single());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => deleteContext.SaveChangesAsync());
+        DbUpdateException exception = await Assert.ThrowsAsync<DbUpdateException>(() => deleteContext.SaveChangesAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, Assert.IsType<PostgresException>(exception.InnerException).SqlState);
+    }
+
+    [Fact]
+    public async Task HistoricalWorkEventCannotBeBulkDeleted()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+
+        await using (FieldOpsDbContext arrangeContext = CreateContext(connectionString))
+        {
+            await arrangeContext.Database.MigrateAsync();
+            Branch branch = Branch.Create("Fictional Bulk Delete Branch");
+            Party party = Party.CreateOrganization("Fictional Bulk Delete Services");
+            party.AssignToBranch(branch);
+            party.AddSite(branch, "Fictional Bulk Delete Site");
+            WorkOrder workOrder = WorkOrder.Create(branch, party, party.Sites.Single());
+            workOrder.AddEvent(WorkEventType.Note, new DateTime(2026, 8, 11, 2, 0, 0, DateTimeKind.Utc), "Historical note", "fictional.bulk.user");
+
+            arrangeContext.AddRange(branch, party, workOrder);
+            await arrangeContext.SaveChangesAsync();
+        }
+
+        await using FieldOpsDbContext deleteContext = CreateContext(connectionString);
+
+        PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => deleteContext.Set<WorkEvent>().ExecuteDeleteAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, exception.SqlState);
+    }
+
+    [Fact]
+    public async Task HistoricalAuditEntryCannotBeDeletedThroughTheContext()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+
+        await using (FieldOpsDbContext arrangeContext = CreateContext(connectionString))
+        {
+            await arrangeContext.Database.MigrateAsync();
+            arrangeContext.AuditEntries.Add(new AuditEntry(
+                nameof(Party),
+                Guid.NewGuid(),
+                "Fictional audit action",
+                new DateTime(2026, 8, 11, 2, 15, 0, DateTimeKind.Utc),
+                "fictional.audit.user"));
+            await arrangeContext.SaveChangesAsync();
+        }
+
+        await using FieldOpsDbContext deleteContext = CreateContext(connectionString);
+        AuditEntry persisted = await deleteContext.AuditEntries.SingleAsync();
+        deleteContext.Remove(persisted);
+
+        DbUpdateException exception = await Assert.ThrowsAsync<DbUpdateException>(() => deleteContext.SaveChangesAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, Assert.IsType<PostgresException>(exception.InnerException).SqlState);
+    }
+
+    [Fact]
+    public async Task HistoricalAuditEntryCannotBeBulkDeleted()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+
+        await using (FieldOpsDbContext arrangeContext = CreateContext(connectionString))
+        {
+            await arrangeContext.Database.MigrateAsync();
+            arrangeContext.AuditEntries.Add(new AuditEntry(
+                nameof(Party),
+                Guid.NewGuid(),
+                "Fictional bulk audit action",
+                new DateTime(2026, 8, 11, 2, 30, 0, DateTimeKind.Utc),
+                "fictional.bulk.audit.user"));
+            await arrangeContext.SaveChangesAsync();
+        }
+
+        await using FieldOpsDbContext deleteContext = CreateContext(connectionString);
+
+        PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => deleteContext.AuditEntries.ExecuteDeleteAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, exception.SqlState);
+    }
+
+    [Fact]
+    public async Task DemoResetBypassAllowsHistoricalDeletesOnlyInsideItsTransaction()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+
+        await using (FieldOpsDbContext arrangeContext = CreateContext(connectionString))
+        {
+            await arrangeContext.Database.MigrateAsync();
+            Branch branch = Branch.Create("Fictional Reset Branch");
+            Party party = Party.CreateOrganization("Fictional Reset Services");
+            party.AssignToBranch(branch);
+            party.AddSite(branch, "Fictional Reset Site");
+            WorkOrder workOrder = WorkOrder.Create(branch, party, party.Sites.Single());
+            workOrder.AddEvent(WorkEventType.Note, new DateTime(2026, 8, 11, 2, 45, 0, DateTimeKind.Utc), "Resettable demo history", "fictional.reset.user");
+            AuditEntry auditEntry = new(
+                nameof(WorkOrder),
+                workOrder.Id,
+                "Fictional reset audit action",
+                new DateTime(2026, 8, 11, 2, 45, 0, DateTimeKind.Utc),
+                "fictional.reset.user");
+
+            arrangeContext.AddRange(branch, party, workOrder, auditEntry);
+            await arrangeContext.SaveChangesAsync();
+        }
+
+        await using FieldOpsDbContext resetContext = CreateContext(connectionString);
+        await using (var transaction = await resetContext.Database.BeginTransactionAsync())
+        {
+            await resetContext.Database.ExecuteSqlRawAsync("SET LOCAL fieldops.allow_historical_delete = 'on'");
+            Assert.Equal(1, await resetContext.Set<WorkEvent>().ExecuteDeleteAsync());
+            Assert.Equal(1, await resetContext.AuditEntries.ExecuteDeleteAsync());
+            await transaction.CommitAsync();
+        }
+
+        Assert.Empty(await resetContext.Set<WorkEvent>().ToListAsync());
+        Assert.Empty(await resetContext.AuditEntries.ToListAsync());
+
+        resetContext.AuditEntries.Add(new AuditEntry(
+            nameof(Party),
+            Guid.NewGuid(),
+            "Fictional post-reset audit action",
+            new DateTime(2026, 8, 11, 3, 0, 0, DateTimeKind.Utc),
+            "fictional.reset.user"));
+        await resetContext.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<PostgresException>(() => resetContext.AuditEntries.ExecuteDeleteAsync());
     }
 
     [Fact]
@@ -119,6 +243,7 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
         Guid workOrderId;
         DateTime occurredAtUtc = new(2026, 8, 11, 2, 45, 0, DateTimeKind.Utc);
+        DateTime scheduledStartUtc = new(2026, 8, 20, 0, 30, 0, DateTimeKind.Utc);
 
         await using (FieldOpsDbContext arrangeContext = CreateContext(connectionString))
         {
@@ -128,9 +253,16 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
             party.AssignToBranch(branch);
             party.AddSite(branch, "Fictional UTC Site");
             WorkOrder workOrder = WorkOrder.Create(branch, party, party.Sites.Single());
+            workOrder.Schedule(scheduledStartUtc, occurredAtUtc);
             workOrder.AddEvent(WorkEventType.Note, occurredAtUtc, "UTC evidence", "fictional.utc.user");
+            AuditEntry auditEntry = new(
+                nameof(WorkOrder),
+                workOrder.Id,
+                "Fictional UTC audit action",
+                occurredAtUtc,
+                "fictional.utc.user");
 
-            arrangeContext.AddRange(branch, party, workOrder);
+            arrangeContext.AddRange(branch, party, workOrder, auditEntry);
             await arrangeContext.SaveChangesAsync();
             workOrderId = workOrder.Id;
         }
@@ -139,11 +271,18 @@ public sealed class ModelMappingTests(PostgresFixture postgres)
         WorkOrder persisted = await assertContext.WorkOrders
             .Include(workOrder => workOrder.Events)
             .SingleAsync(workOrder => workOrder.Id == workOrderId);
+        AuditEntry persistedAudit = await assertContext.AuditEntries.SingleAsync();
 
         Assert.Equal(DateTimeKind.Utc, persisted.CreatedAtUtc.Kind);
         Assert.Equal(DateTimeKind.Utc, persisted.UpdatedAtUtc.Kind);
+        Assert.Equal(DateTimeKind.Utc, persisted.ScheduledStartUtc?.Kind);
+        Assert.Equal(scheduledStartUtc, persisted.ScheduledStartUtc);
         Assert.Equal(DateTimeKind.Utc, persisted.Events.Single().OccurredAtUtc.Kind);
         Assert.Equal(occurredAtUtc, persisted.Events.Single().OccurredAtUtc);
+        Assert.Equal(DateTimeKind.Utc, persistedAudit.CreatedAtUtc.Kind);
+        Assert.Equal(DateTimeKind.Utc, persistedAudit.UpdatedAtUtc.Kind);
+        Assert.Equal(DateTimeKind.Utc, persistedAudit.OccurredAtUtc.Kind);
+        Assert.Equal(occurredAtUtc, persistedAudit.OccurredAtUtc);
     }
 
     private async Task<FieldOpsDbContext> CreateMigratedContextAsync()

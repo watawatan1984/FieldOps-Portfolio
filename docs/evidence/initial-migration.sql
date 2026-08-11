@@ -298,3 +298,44 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811132559_EnforceAppendOnlyHistory') THEN
+    CREATE FUNCTION "fieldops_reject_historical_delete"() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $fieldops$
+    BEGIN
+        IF current_setting('fieldops.allow_historical_delete', true) IS DISTINCT FROM 'on' THEN
+            RAISE EXCEPTION 'Historical WorkEvent and AuditEntry rows are append-only.'
+                USING ERRCODE = '42501';
+        END IF;
+
+        RETURN OLD;
+    END;
+    $fieldops$;
+
+    COMMENT ON FUNCTION "fieldops_reject_historical_delete"() IS
+        'Rejects historical deletes unless a deliberate transaction-local demo-reset bypass is enabled.';
+
+    CREATE TRIGGER "TR_WorkEvents_AppendOnly"
+        BEFORE DELETE ON "WorkEvents"
+        FOR EACH ROW
+        EXECUTE FUNCTION "fieldops_reject_historical_delete"();
+
+    CREATE TRIGGER "TR_AuditEntries_AppendOnly"
+        BEFORE DELETE ON "AuditEntries"
+        FOR EACH ROW
+        EXECUTE FUNCTION "fieldops_reject_historical_delete"();
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20260811132559_EnforceAppendOnlyHistory') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20260811132559_EnforceAppendOnlyHistory', '10.0.10');
+    END IF;
+END $EF$;
+COMMIT;
