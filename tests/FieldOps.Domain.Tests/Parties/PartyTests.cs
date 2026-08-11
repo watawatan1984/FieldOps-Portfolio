@@ -27,6 +27,14 @@ public sealed class PartyTests
     }
 
     [Fact]
+    public void AddRole_RejectsUndefinedRoleType()
+    {
+        Party party = Party.CreateOrganization("Northwind Service Works");
+
+        Assert.Throws<DomainException>(() => party.AddRole((PartyRoleType)999));
+    }
+
+    [Fact]
     public void CreateOrganization_TrimsNameAndRejectsBlankName()
     {
         Assert.Throws<DomainException>(() => Party.CreateOrganization("   "));

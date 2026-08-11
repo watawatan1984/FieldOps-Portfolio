@@ -41,6 +41,11 @@ public sealed class Party : Entity
 
     public void AddRole(PartyRoleType roleType)
     {
+        if (!Enum.IsDefined(roleType))
+        {
+            throw new DomainException("The party role type is not supported.");
+        }
+
         if (_roles.Any(role => role.RoleType == roleType))
         {
             throw new DomainException($"The party already has the {roleType} role.");
