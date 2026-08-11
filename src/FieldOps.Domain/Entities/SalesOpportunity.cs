@@ -60,7 +60,7 @@ public sealed class SalesOpportunity : Entity
 
         if (next == SalesOpportunityStatus.Won && (ProposedAmount is null || ExpectedCloseDate is null))
         {
-            throw new DomainException("A SalesOpportunity cannot move to Won without a proposal amount and expected close date.");
+            throw new DomainException($"SalesOpportunity transition from {Status} to {next} requires a proposal amount and expected close date.");
         }
 
         Status = next;

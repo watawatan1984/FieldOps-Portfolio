@@ -49,7 +49,7 @@ public sealed class WorkOrder : Entity
 
         if (next == WorkOrderStatus.Completed && !_events.Any(workEvent => workEvent.EventType == WorkEventType.Completion))
         {
-            throw new DomainException("A WorkOrder cannot move to Completed without a completion event.");
+            throw new DomainException($"WorkOrder transition from {Status} to {next} requires a completion event.");
         }
 
         Status = next;

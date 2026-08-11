@@ -71,7 +71,11 @@ public sealed class SalesOpportunityTests
     {
         SalesOpportunity opportunity = CreateAt(SalesOpportunityStatus.Proposed);
 
-        Assert.Throws<DomainException>(() => opportunity.MoveTo(SalesOpportunityStatus.Won, Utc(12)));
+        DomainException exception = Assert.Throws<DomainException>(() => opportunity.MoveTo(SalesOpportunityStatus.Won, Utc(12)));
+
+        Assert.Contains(nameof(SalesOpportunity), exception.Message);
+        Assert.Contains(SalesOpportunityStatus.Proposed.ToString(), exception.Message);
+        Assert.Contains(SalesOpportunityStatus.Won.ToString(), exception.Message);
 
         opportunity.SetProposal(12500m, Utc(30));
         opportunity.MoveTo(SalesOpportunityStatus.Won, Utc(12));

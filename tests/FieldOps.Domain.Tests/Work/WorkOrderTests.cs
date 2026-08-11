@@ -55,7 +55,11 @@ public sealed class WorkOrderTests
     {
         WorkOrder workOrder = CreateAt(WorkOrderStatus.InProgress);
 
-        Assert.Throws<DomainException>(() => workOrder.MoveTo(WorkOrderStatus.Completed, Utc(12)));
+        DomainException exception = Assert.Throws<DomainException>(() => workOrder.MoveTo(WorkOrderStatus.Completed, Utc(12)));
+
+        Assert.Contains(nameof(WorkOrder), exception.Message);
+        Assert.Contains(WorkOrderStatus.InProgress.ToString(), exception.Message);
+        Assert.Contains(WorkOrderStatus.Completed.ToString(), exception.Message);
 
         workOrder.AddEvent(WorkEventType.Completion, Utc(11), "Work completed", "operator-42");
         workOrder.MoveTo(WorkOrderStatus.Completed, Utc(12));
