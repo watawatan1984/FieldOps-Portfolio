@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IMutationExecutor, MutationExecutor>();
         services.AddScoped<IPartyNameLock, PostgresPartyNameLock>();
         services.AddScoped<IAuditWriter, AuditWriter>();
+        services.AddScoped<IFieldOpsUserDirectory, PostgresFieldOpsUserDirectory>();
         services.AddSingleton(TimeProvider.System);
         return services;
     }

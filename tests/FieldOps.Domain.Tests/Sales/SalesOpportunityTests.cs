@@ -84,6 +84,18 @@ public sealed class SalesOpportunityTests
     }
 
     [Fact]
+    public void AllowedTransitions_HidesWonUntilProposalRequirementsArePresent()
+    {
+        SalesOpportunity opportunity = CreateAt(SalesOpportunityStatus.Proposed);
+
+        Assert.DoesNotContain(SalesOpportunityStatus.Won, opportunity.GetAllowedTransitions());
+
+        opportunity.SetProposal(12500m, Utc(30));
+
+        Assert.Contains(SalesOpportunityStatus.Won, opportunity.GetAllowedTransitions());
+    }
+
+    [Fact]
     public void MoveTo_RequiresUtcTimestamp()
     {
         SalesOpportunity opportunity = CreateAt(SalesOpportunityStatus.New);

@@ -62,7 +62,8 @@ public sealed class FieldOpsResourceAuthorizer(
                 user,
                 new BranchAccessResource(loadedBranchId.Value, null),
                 action,
-                action is BranchResourceAction.ViewDashboard or BranchResourceAction.ManageParties or BranchResourceAction.ViewAudit);
+                action is BranchResourceAction.ViewDashboard or BranchResourceAction.ManageParties or
+                    BranchResourceAction.ReadSales or BranchResourceAction.ManageSales or BranchResourceAction.ViewAudit);
     }
 
     public async Task<ResourceAuthorizationOutcome> AuthorizeSalesOpportunityAsync(
@@ -73,7 +74,11 @@ public sealed class FieldOpsResourceAuthorizer(
     {
         BranchAccessResource? resource = await dbContext.SalesOpportunities
             .Where(opportunity => opportunity.Id == salesOpportunityId)
-            .Select(opportunity => new BranchAccessResource(opportunity.BranchId, opportunity.AssignedUserId))
+            .Select(opportunity => new BranchAccessResource(
+                opportunity.BranchId,
+                opportunity.AssignedUserId,
+                opportunity.OwnerUserId,
+                BranchAccessResourceKind.SalesOpportunity))
             .SingleOrDefaultAsync(cancellationToken);
         return resource is null
             ? ResourceAuthorizationOutcome.NotFound
@@ -120,7 +125,11 @@ public sealed class FieldOpsResourceAuthorizer(
     {
         BranchAccessResource? resource = await dbContext.WorkOrders
             .Where(workOrder => workOrder.Id == workOrderId)
-            .Select(workOrder => new BranchAccessResource(workOrder.BranchId, workOrder.AssignedUserId))
+            .Select(workOrder => new BranchAccessResource(
+                workOrder.BranchId,
+                workOrder.AssignedUserId,
+                null,
+                BranchAccessResourceKind.WorkOrder))
             .SingleOrDefaultAsync(cancellationToken);
         return resource is null
             ? ResourceAuthorizationOutcome.NotFound

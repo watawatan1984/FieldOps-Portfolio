@@ -18,7 +18,18 @@ public enum BranchResourceAction
     ViewAudit
 }
 
-internal sealed record BranchAccessResource(Guid BranchId, string? AssignedUserId);
+internal enum BranchAccessResourceKind
+{
+    Branch,
+    SalesOpportunity,
+    WorkOrder
+}
+
+internal sealed record BranchAccessResource(
+    Guid BranchId,
+    string? AssignedUserId,
+    string? OwnerUserId = null,
+    BranchAccessResourceKind Kind = BranchAccessResourceKind.Branch);
 
 internal sealed record BranchAccessRequirement(BranchResourceAction Action) : IAuthorizationRequirement;
 
@@ -41,11 +52,12 @@ internal sealed class BranchAccessHandler
             return Task.CompletedTask;
         }
 
+        string? userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         bool allowed = context.User.IsInRole(DemoRoleNames.BranchManager) ||
-            context.User.IsInRole(DemoRoleNames.SalesRepresentative) && IsSalesRepresentativeAction(requirement.Action) ||
+            context.User.IsInRole(DemoRoleNames.SalesRepresentative) &&
+            IsSalesRepresentativeAllowed(requirement.Action, resource, userId) ||
             context.User.IsInRole(DemoRoleNames.FieldTechnician) &&
-            IsTechnicianAction(requirement.Action) &&
-            resource.AssignedUserId == context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            IsTechnicianAllowed(requirement.Action, resource, userId);
 
         if (allowed)
         {
@@ -58,16 +70,27 @@ internal sealed class BranchAccessHandler
     private static bool TryGetBranchId(ClaimsPrincipal user, out Guid branchId) =>
         Guid.TryParse(user.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType), out branchId);
 
-    private static bool IsSalesRepresentativeAction(BranchResourceAction action) =>
-        action is BranchResourceAction.ViewDashboard or
-            BranchResourceAction.ManageParties or
-            BranchResourceAction.ManageSales or
-            BranchResourceAction.ReadSales or
-            BranchResourceAction.ReadWorkOrders;
+    private static bool IsSalesRepresentativeAllowed(
+        BranchResourceAction action,
+        BranchAccessResource resource,
+        string? userId) =>
+        action switch
+        {
+            BranchResourceAction.ViewDashboard or BranchResourceAction.ManageParties or BranchResourceAction.ReadWorkOrders => true,
+            BranchResourceAction.ManageSales or BranchResourceAction.ReadSales =>
+                resource.Kind != BranchAccessResourceKind.SalesOpportunity || resource.OwnerUserId == userId,
+            _ => false
+        };
 
-    private static bool IsTechnicianAction(BranchResourceAction action) =>
-        action is BranchResourceAction.ViewDashboard or
-            BranchResourceAction.ReadSales or
-            BranchResourceAction.ReadWorkOrders or
-            BranchResourceAction.UpdateWorkOrders;
+    private static bool IsTechnicianAllowed(
+        BranchResourceAction action,
+        BranchAccessResource resource,
+        string? userId) =>
+        action switch
+        {
+            BranchResourceAction.ReadSales when resource.Kind == BranchAccessResourceKind.Branch => true,
+            BranchResourceAction.ViewDashboard or BranchResourceAction.ReadSales or BranchResourceAction.ReadWorkOrders or BranchResourceAction.UpdateWorkOrders =>
+                resource.AssignedUserId == userId,
+            _ => false
+        };
 }

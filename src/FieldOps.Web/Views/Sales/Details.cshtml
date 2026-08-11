@@ -1,0 +1,18 @@
+@model FieldOps.Features.Sales.SalesDetailsViewModel
+@{
+    ViewData["Title"] = Model.PartyName;
+}
+<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">Sales</a></li><li class="breadcrumb-item active" aria-current="page">@Model.PartyName</li></ol></nav>
+<div asp-validation-summary="All" class="text-danger" role="alert" tabindex="-1"></div>
+<div class="d-flex justify-content-between align-items-start"><div><h1>@Model.PartyName</h1><p class="text-body-secondary">@Model.SiteName · @Model.BranchName</p></div><span class="badge text-bg-primary fs-6">@Model.Status</span></div>
+<dl class="row"><dt class="col-sm-3">Sales owner</dt><dd class="col-sm-9">@Model.OwnerName</dd><dt class="col-sm-3">Assigned technician</dt><dd class="col-sm-9">@(Model.AssignedUserName ?? "Not assigned")</dd><dt class="col-sm-3">Proposed amount</dt><dd class="col-sm-9">@(Model.ProposedAmount?.ToString("C") ?? "Not set")</dd><dt class="col-sm-3">Expected close date</dt><dd class="col-sm-9">@(Model.ExpectedCloseDate?.ToString("yyyy-MM-dd") ?? "Not set")</dd></dl>
+@if (Model.CanManage)
+{
+    <p><a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id">Edit opportunity</a></p>
+    @if (Model.AllowedTransitions.Count > 0)
+    {
+        <section aria-labelledby="transitions-heading"><h2 id="transitions-heading" class="h4">Available actions</h2><div class="d-flex flex-wrap gap-2">@foreach (var status in Model.AllowedTransitions) { <form asp-action="Transition" asp-route-id="@Model.Id" method="post"><input name="Version" type="hidden" value="@Model.Version" /><input name="NextStatus" type="hidden" value="@status" /><button type="submit" class="btn btn-outline-primary">Move to @status</button></form> }</div></section>
+    }
+}
+<hr />
+<section aria-labelledby="audit-heading"><h2 id="audit-heading" class="h4">Audit history</h2>@if (Model.AuditEntries.Count == 0) { <p>No audit entries recorded.</p> } else { <ol>@foreach (var audit in Model.AuditEntries) { <li><time datetime="@audit.OccurredAtUtc.ToString("O")">@audit.OccurredAtUtc.ToString("u")</time> — @audit.Action (@audit.Outcome) — fields: @(string.IsNullOrEmpty(audit.ChangedFields) ? "none" : audit.ChangedFields)</li> }</ol> }</section>

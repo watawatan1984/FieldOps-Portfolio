@@ -32,6 +32,6 @@ public sealed class AuthorizationMigrationTests(PostgresFixture postgres)
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
         Assert.Contains(
             await context.Database.GetAppliedMigrationsAsync(),
-            migration => migration.EndsWith("_PersistResourceAssignments", StringComparison.Ordinal));
+            migration => migration.EndsWith("_AddSalesOpportunityOwner", StringComparison.Ordinal));
     }
 }

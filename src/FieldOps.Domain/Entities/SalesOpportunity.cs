@@ -30,6 +30,8 @@ public sealed class SalesOpportunity : Entity
 
     public string? AssignedUserId { get; private set; }
 
+    public string? OwnerUserId { get; private set; }
+
     public SalesOpportunityStatus Status { get; private set; }
 
     public decimal? ProposedAmount { get; private set; }
@@ -41,6 +43,20 @@ public sealed class SalesOpportunity : Entity
     public void AssignToUser(string applicationUserId)
     {
         AssignedUserId = RequiredText(applicationUserId, nameof(applicationUserId));
+        Touch();
+    }
+
+    public void AssignOwner(string applicationUserId)
+    {
+        OwnerUserId = RequiredText(applicationUserId, nameof(applicationUserId));
+        Touch();
+    }
+
+    public void UpdateAssignedUser(string? applicationUserId)
+    {
+        AssignedUserId = string.IsNullOrWhiteSpace(applicationUserId)
+            ? null
+            : RequiredText(applicationUserId, nameof(applicationUserId));
         Touch();
     }
 
@@ -78,6 +94,12 @@ public sealed class SalesOpportunity : Entity
         Status = next;
         Touch();
     }
+
+    public IReadOnlyList<SalesOpportunityStatus> GetAllowedTransitions() =>
+        Enum.GetValues<SalesOpportunityStatus>()
+            .Where(next => IsAllowedTransition(Status, next) &&
+                (next != SalesOpportunityStatus.Won || ProposedAmount is not null && ExpectedCloseDate is not null))
+            .ToArray();
 
     private static bool IsAllowedTransition(SalesOpportunityStatus current, SalesOpportunityStatus next) =>
         (current, next) switch

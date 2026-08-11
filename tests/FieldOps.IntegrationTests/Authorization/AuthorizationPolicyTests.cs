@@ -2,9 +2,9 @@ using System.Net;
 using System.Text.RegularExpressions;
 
 using FieldOps.Domain.Entities;
-using FieldOps.IntegrationTests.Infrastructure;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
+using FieldOps.IntegrationTests.Infrastructure;
 using FieldOps.Web.Authorization;
 
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -296,7 +296,7 @@ public sealed class AuthorizationPolicyTests(PostgresFixture postgres)
         centralParty.AssignToBranch(centralBranch);
         centralParty.AddSite(centralBranch, "Fictional Central Authorization Site");
         SalesOpportunity centralSales = SalesOpportunity.Create(centralBranch, centralParty, centralParty.Sites.Single());
-        centralSales.AssignToUser(salesUser.Id);
+        centralSales.AssignOwner(salesUser.Id);
         WorkOrder centralWork = WorkOrder.Create(centralBranch, centralParty, centralParty.Sites.Single());
 
         Party fieldParty = Party.CreateOrganization("Fictional Field Authorization Customer");

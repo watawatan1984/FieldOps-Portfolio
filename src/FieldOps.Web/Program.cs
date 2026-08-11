@@ -1,6 +1,7 @@
 using FieldOps.Domain.Common;
 using FieldOps.Features.Abstractions;
 using FieldOps.Features.Parties;
+using FieldOps.Features.Sales;
 using FieldOps.Infrastructure;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
@@ -29,6 +30,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 builder.Services.AddScoped<PartyQueries>();
 builder.Services.AddScoped<PartyCommands>();
+builder.Services.AddScoped<SalesQueries>();
+builder.Services.AddScoped<SalesCommands>();
 builder.Services.AddFieldOpsAuthorization();
 builder.Services.AddFieldOpsInfrastructure(
     builder.Configuration.GetConnectionString("FieldOps") ??
