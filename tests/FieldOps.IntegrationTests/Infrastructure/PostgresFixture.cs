@@ -36,4 +36,16 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         return connectionString.ConnectionString;
     }
+
+    public async Task<int> CountDatabaseConnectionsAsync(
+        string databaseName,
+        CancellationToken cancellationToken = default)
+    {
+        await using NpgsqlConnection connection = new(_container.GetConnectionString());
+        await connection.OpenAsync(cancellationToken);
+        await using NpgsqlCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT count(*) FROM pg_stat_activity WHERE datname = @databaseName";
+        command.Parameters.AddWithValue("databaseName", databaseName);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken), System.Globalization.CultureInfo.InvariantCulture);
+    }
 }

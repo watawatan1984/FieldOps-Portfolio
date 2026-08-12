@@ -1,4 +1,3 @@
-using FieldOps.Domain.Common;
 using FieldOps.Features.Abstractions;
 using FieldOps.Features.Administration;
 using FieldOps.Features.Dashboard;
@@ -17,11 +16,11 @@ using FieldOps.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
-
-using Npgsql;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +32,12 @@ builder.Logging.AddConsoleFormatter<RedactedJsonConsoleFormatter, ConsoleFormatt
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 builder.Services.AddRateLimiter(RateLimitPolicies.Configure);
+builder.Services.AddOptions<TrustedProxyOptions>()
+    .Bind(builder.Configuration.GetSection(TrustedProxyOptions.SectionName))
+    .Validate(TrustedProxyOptions.HasValidForwardLimit, "Trusted proxy ForwardLimit must be between 1 and 5.")
+    .Validate(TrustedProxyOptions.HasValidProxies, "Every trusted proxy must be an IP address.")
+    .Validate(TrustedProxyOptions.HasValidNetworks, "Every trusted network must be in CIDR notation.")
+    .ValidateOnStart();
 builder.Services.AddOptions<DemoModeOptions>()
     .Bind(builder.Configuration.GetSection(DemoModeOptions.SectionName))
     .Validate(
@@ -85,7 +90,8 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-_ = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<DemoModeOptions>>().Value;
+TrustedProxyOptions trustedProxyOptions = app.Services.GetRequiredService<IOptions<TrustedProxyOptions>>().Value;
+_ = app.Services.GetRequiredService<IOptions<DemoModeOptions>>().Value;
 
 await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
 {
@@ -98,6 +104,28 @@ await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 
+if (trustedProxyOptions.HasTrustedSources)
+{
+    ForwardedHeadersOptions forwardedHeaders = new()
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        ForwardLimit = trustedProxyOptions.ForwardLimit
+    };
+    forwardedHeaders.KnownProxies.Clear();
+    forwardedHeaders.KnownIPNetworks.Clear();
+    foreach (string address in trustedProxyOptions.KnownProxies)
+    {
+        forwardedHeaders.KnownProxies.Add(System.Net.IPAddress.Parse(address));
+    }
+
+    foreach (string network in trustedProxyOptions.KnownNetworks)
+    {
+        forwardedHeaders.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+    }
+
+    app.UseForwardedHeaders(forwardedHeaders);
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
@@ -108,8 +136,6 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseMiddleware<RequestLoggingMiddleware>();
-app.UseAuthorization();
-app.UseRateLimiter();
 app.UseExceptionHandler(new ExceptionHandlerOptions
 {
     AllowStatusCode404Response = true,
@@ -118,29 +144,21 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
     {
         Exception exception = context.Features.Get<IExceptionHandlerFeature>()?.Error
             ?? new InvalidOperationException("An exception was not available to the handler.");
-        Exception classifiedException = exception.GetBaseException();
-        (int statusCode, string category, string safeType) = classifiedException switch
-        {
-            DomainException => (StatusCodes.Status400BadRequest, "domain", nameof(DomainException)),
-            DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "concurrency", nameof(DbUpdateConcurrencyException)),
-            UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "authorization", nameof(UnauthorizedAccessException)),
-            KeyNotFoundException => (StatusCodes.Status404NotFound, "not_found", nameof(KeyNotFoundException)),
-            TimeoutException => (StatusCodes.Status503ServiceUnavailable, "database_timeout", nameof(TimeoutException)),
-            NpgsqlException => (StatusCodes.Status503ServiceUnavailable, "database_unavailable", nameof(NpgsqlException)),
-            _ => (StatusCodes.Status500InternalServerError, "unexpected", "UnhandledException")
-        };
+        SafeExceptionClassification classification = SafeExceptionClassifier.Classify(exception);
         ILogger safeExceptionLogger = context.RequestServices
             .GetRequiredService<ILoggerFactory>()
             .CreateLogger("FieldOps.Web.Diagnostics.SafeException");
         safeExceptionLogger.Log(
-            statusCode == StatusCodes.Status500InternalServerError ? LogLevel.Error : LogLevel.Warning,
+            classification.StatusCode == StatusCodes.Status500InternalServerError ? LogLevel.Error : LogLevel.Warning,
             "Request exception classified as {ExceptionCategory} with safe type {ExceptionType}",
-            category,
-            safeType);
-        context.Response.StatusCode = statusCode;
+            classification.Category,
+            classification.SafeType);
+        context.Response.StatusCode = classification.StatusCode;
         await context.Response.WriteAsJsonAsync(new { correlationId = context.TraceIdentifier });
     }
 });
+app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {

@@ -81,6 +81,7 @@ public sealed class ConcurrentMutationTests(PostgresFixture postgres)
         SalesOpportunity final = await db.SalesOpportunities.AsNoTracking().SingleAsync(item => item.Id == seed.Id);
         Assert.InRange(final.ProposedAmount!.Value, 1001m, 1020m);
         Assert.Equal(seed.ExpectedCloseDate, final.ExpectedCloseDate);
+        Assert.NotEqual(seed.Version, final.Version);
         Assert.Equal(1, await db.AuditEntries.CountAsync(entry =>
             entry.AggregateType == nameof(SalesOpportunity) &&
             entry.AggregateId == seed.Id &&

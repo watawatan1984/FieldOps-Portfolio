@@ -2,13 +2,18 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text.RegularExpressions;
 
+using FieldOps.Domain.Entities;
+using FieldOps.Domain.Enums;
+using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 using FieldOps.IntegrationTests.Infrastructure;
 
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 namespace FieldOps.IntegrationTests.Security;
 
 [Collection(DatabaseCollection.Name)]
@@ -18,7 +23,7 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
         "default-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
     [Fact]
-    public async Task SecurityHeadersCoverNormalForbiddenNotFoundAndUnhandledResponsesExactlyOnce()
+    public async Task SecurityHeadersCoverNormalForbiddenNotFoundConflictAndUnhandledResponsesExactlyOnce()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using FieldOpsWebApplicationFactory application = new(connectionString);
@@ -29,13 +34,15 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
         using HttpResponseMessage normal = await anonymous.GetAsync("/demo-login");
         using HttpResponseMessage forbidden = await manager.GetAsync("/administration/reset");
         using HttpResponseMessage notFound = await anonymous.GetAsync("/diagnostics-probe/not-found");
+        using HttpResponseMessage conflict = await anonymous.GetAsync("/diagnostics-probe/concurrency-error");
         using HttpResponseMessage unhandled = await anonymous.GetAsync("/diagnostics-probe/unhandled");
 
         Assert.Equal(HttpStatusCode.OK, normal.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         Assert.Equal(HttpStatusCode.InternalServerError, unhandled.StatusCode);
-        Assert.All([normal, forbidden, notFound, unhandled], AssertSecurityHeaders);
+        Assert.All([normal, forbidden, notFound, conflict, unhandled], AssertSecurityHeaders);
     }
 
     [Fact]
@@ -79,7 +86,10 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
     public async Task DemoLoginAllowsExactlyTwentyFailedAttemptsPerClientIpThenReturnsSafe429()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
-        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            configureServices: services => services.AddSingleton<IStartupFilter>(
+                new FixedRemoteIpStartupFilter(IPAddress.Parse("192.0.2.10"))));
         using HttpClient client = CreateHttpsClient(application);
         string html = await client.GetStringAsync("/demo-login");
         string antiforgeryToken = GetInputValue(html, "__RequestVerificationToken");
@@ -117,6 +127,69 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
         Assert.True(int.Parse(Assert.Single(rejected.Headers.GetValues("Retry-After")), System.Globalization.CultureInfo.InvariantCulture) > 0);
         Assert.Equal("{\"correlationId\":\"login-rate-limit-test\"}", body);
         AssertSecurityHeaders(rejected);
+    }
+
+    [Fact]
+    public async Task ExplicitTrustedProxyUsesForwardedClientIpForDistinctLoginWindows()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            configureServices: services => services.AddSingleton<IStartupFilter>(
+                new FixedRemoteIpStartupFilter(IPAddress.Parse("192.0.2.10"))),
+            configuration: new Dictionary<string, string?>
+            {
+                ["TrustedProxy:ForwardLimit"] = "1",
+                ["TrustedProxy:KnownProxies:0"] = "192.0.2.10"
+            });
+        using HttpClient client = CreateHttpsClient(application);
+        string html = await client.GetStringAsync("/demo-login");
+        string antiforgeryToken = GetInputValue(html, "__RequestVerificationToken");
+
+        for (int clientNumber = 1; clientNumber <= 21; clientNumber++)
+        {
+            using HttpRequestMessage distinctClient = CreateInvalidLoginRequest(
+                antiforgeryToken,
+                $"198.51.100.{clientNumber}",
+                $"distinct-{clientNumber}");
+            using HttpResponseMessage response = await client.SendAsync(distinctClient);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        for (int attempt = 2; attempt <= 20; attempt++)
+        {
+            using HttpRequestMessage sameClient = CreateInvalidLoginRequest(
+                antiforgeryToken,
+                "198.51.100.1",
+                $"same-{attempt}");
+            using HttpResponseMessage response = await client.SendAsync(sameClient);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        using HttpRequestMessage rejectedRequest = CreateInvalidLoginRequest(
+            antiforgeryToken,
+            "198.51.100.1",
+            "same-21");
+        rejectedRequest.Headers.Add("X-Correlation-ID", "trusted-proxy-rate-limit-test");
+        using HttpResponseMessage rejected = await client.SendAsync(rejectedRequest);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+        Assert.Equal("{\"correlationId\":\"trusted-proxy-rate-limit-test\"}", await rejected.Content.ReadAsStringAsync());
+        AssertSecurityHeaders(rejected);
+    }
+
+    [Theory]
+    [InlineData("TrustedProxy:KnownProxies:0", "not-an-ip-address")]
+    [InlineData("TrustedProxy:KnownNetworks:0", "192.0.2.0/not-a-prefix")]
+    [InlineData("TrustedProxy:ForwardLimit", "100")]
+    public async Task InvalidTrustedProxyConfigurationFailsStartup(string key, string value)
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            configuration: new Dictionary<string, string?> { [key] = value });
+
+        _ = Assert.Throws<OptionsValidationException>(() => application.CreateClient());
     }
 
     [Fact]
@@ -207,6 +280,101 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
                 response.StatusCode == HttpStatusCode.BadRequest,
                 $"Expected antiforgery rejection for {path}, received {(int)response.StatusCode}.");
         }
+    }
+
+    [Fact]
+    public async Task ProductionFormsIgnoreOverpostedIdentityOwnershipAssignmentAndBranchFields()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        OverpostSeed seed = await SeedOverpostResourcesAsync(application);
+        using HttpClient client = CreateHttpsClient(application);
+        await LoginAsAsync(client, DemoRoleNames.SystemAdministrator);
+        string spoofUserId = $"spoof-user-{Guid.NewGuid():N}";
+        string spoofOwnerId = $"spoof-owner-{Guid.NewGuid():N}";
+        string spoofAssigneeId = $"spoof-assignee-{Guid.NewGuid():N}";
+
+        string partyHtml = await client.GetStringAsync($"/parties/{seed.PartyId}/edit?branchId={seed.BranchId}");
+        using HttpResponseMessage partyResponse = await client.PostAsync(
+            $"/parties/{seed.PartyId}/edit",
+            OverpostedForm(
+                new Dictionary<string, string>
+                {
+                    ["Id"] = seed.PartyId.ToString(),
+                    ["BranchId"] = seed.BranchId.ToString(),
+                    ["Version"] = GetInputValue(partyHtml, "Version"),
+                    ["OrganizationName"] = "Fictional Overpost Customer Updated",
+                    ["IsCustomer"] = "true",
+                    ["__RequestVerificationToken"] = GetInputValue(partyHtml, "__RequestVerificationToken")
+                },
+                spoofUserId,
+                spoofOwnerId,
+                spoofAssigneeId,
+                seed.OtherBranchId));
+        Assert.Equal(HttpStatusCode.Redirect, partyResponse.StatusCode);
+
+        string salesHtml = await client.GetStringAsync($"/sales/{seed.SalesOpportunityId}");
+        using HttpResponseMessage salesResponse = await client.PostAsync(
+            $"/sales/{seed.SalesOpportunityId}/transition",
+            OverpostedForm(
+                new Dictionary<string, string>
+                {
+                    ["Version"] = GetInputValue(salesHtml, "Version"),
+                    ["NextStatus"] = SalesOpportunityStatus.Contacted.ToString(),
+                    ["__RequestVerificationToken"] = GetInputValue(salesHtml, "__RequestVerificationToken")
+                },
+                spoofUserId,
+                spoofOwnerId,
+                spoofAssigneeId,
+                seed.OtherBranchId));
+        Assert.Equal(HttpStatusCode.Redirect, salesResponse.StatusCode);
+
+        string workHtml = await client.GetStringAsync($"/work-orders/{seed.WorkOrderId}");
+        using HttpResponseMessage workResponse = await client.PostAsync(
+            $"/work-orders/{seed.WorkOrderId}/transition",
+            OverpostedForm(
+                new Dictionary<string, string>
+                {
+                    ["Version"] = GetInputValue(workHtml, "Version"),
+                    ["NextStatus"] = WorkOrderStatus.Cancelled.ToString(),
+                    ["__RequestVerificationToken"] = GetInputValue(workHtml, "__RequestVerificationToken")
+                },
+                spoofUserId,
+                spoofOwnerId,
+                spoofAssigneeId,
+                seed.OtherBranchId));
+        Assert.Equal(HttpStatusCode.Redirect, workResponse.StatusCode);
+
+        string responseSurface = string.Join('|', new[] { partyResponse, salesResponse, workResponse }
+            .Select(response => response.Headers.Location?.OriginalString ?? string.Empty));
+        Assert.DoesNotContain(spoofUserId, responseSurface, StringComparison.Ordinal);
+        Assert.DoesNotContain(spoofOwnerId, responseSurface, StringComparison.Ordinal);
+        Assert.DoesNotContain(spoofAssigneeId, responseSurface, StringComparison.Ordinal);
+        Assert.DoesNotContain(seed.OtherBranchId.ToString(), responseSurface, StringComparison.OrdinalIgnoreCase);
+
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext db = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Party party = await db.Parties.Include(item => item.BranchAssignments).SingleAsync(item => item.Id == seed.PartyId);
+        SalesOpportunity sales = await db.SalesOpportunities.SingleAsync(item => item.Id == seed.SalesOpportunityId);
+        WorkOrder work = await db.WorkOrders.SingleAsync(item => item.Id == seed.WorkOrderId);
+        Assert.Equal("Fictional Overpost Customer Updated", party.OrganizationName);
+        Assert.Equal([seed.BranchId], party.BranchAssignments.Select(item => item.BranchId));
+        Assert.Equal((seed.BranchId, seed.OwnerUserId, seed.AssignedUserId, SalesOpportunityStatus.Contacted),
+            (sales.BranchId, sales.OwnerUserId, sales.AssignedUserId, sales.Status));
+        Assert.Equal((seed.BranchId, seed.AssignedUserId, WorkOrderStatus.Cancelled),
+            (work.BranchId, work.AssignedUserId, work.Status));
+
+        AuditEntry partyAudit = await db.AuditEntries.SingleAsync(item => item.AggregateId == seed.PartyId);
+        AuditEntry salesAudit = await db.AuditEntries.SingleAsync(item => item.AggregateId == seed.SalesOpportunityId);
+        AuditEntry workAudit = await db.AuditEntries.SingleAsync(item => item.AggregateId == seed.WorkOrderId);
+        Assert.All([partyAudit, salesAudit, workAudit], audit => Assert.Equal(seed.ActorUserId, audit.ActorUserId));
+        Assert.Equal((seed.BranchId, "OrganizationName"), (partyAudit.BranchId, partyAudit.ChangeSummary));
+        Assert.Equal((seed.BranchId, "NextStatus"), (salesAudit.BranchId, salesAudit.ChangeSummary));
+        Assert.Equal((seed.BranchId, "NextStatus"), (workAudit.BranchId, workAudit.ChangeSummary));
+        Assert.DoesNotContain(
+            "UserId",
+            string.Join('|', new[] { partyAudit, salesAudit, workAudit }.Select(audit => audit.ChangeSummary)),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -336,6 +504,78 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
             BaseAddress = new Uri("https://localhost")
         });
 
+    private static HttpRequestMessage CreateInvalidLoginRequest(
+        string antiforgeryToken,
+        string forwardedFor,
+        string roleToken)
+    {
+        HttpRequestMessage request = new(HttpMethod.Post, "/demo-login")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["roleToken"] = roleToken,
+                ["__RequestVerificationToken"] = antiforgeryToken
+            })
+        };
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        return request;
+    }
+
+    private static FormUrlEncodedContent OverpostedForm(
+        Dictionary<string, string> intendedFields,
+        string userId,
+        string ownerUserId,
+        string assignedUserId,
+        Guid branchId)
+    {
+        intendedFields["UserId"] = userId;
+        intendedFields["OwnerUserId"] = ownerUserId;
+        intendedFields["AssignedUserId"] = assignedUserId;
+        intendedFields.TryAdd("BranchId", branchId.ToString());
+        return new FormUrlEncodedContent(intendedFields);
+    }
+
+    private static async Task<OverpostSeed> SeedOverpostResourcesAsync(
+        FieldOpsWebApplicationFactory application)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext db = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Branch[] branches = await db.Branches.OrderBy(branch => branch.Name).Take(2).ToArrayAsync();
+        Assert.Equal(2, branches.Length);
+        Branch branch = branches[0];
+        Branch otherBranch = branches[1];
+        string ownerUserId = DemoDataManifest.UsersByRole[DemoRoleNames.SalesRepresentative].Id;
+        string assignedUserId = DemoDataManifest.UsersByRole[DemoRoleNames.FieldTechnician].Id;
+        string actorUserId = DemoDataManifest.UsersByRole[DemoRoleNames.SystemAdministrator].Id;
+
+        Party party = Party.CreateOrganization("Fictional Overpost Customer");
+        party.AddRole(PartyRoleType.Customer);
+        party.AssignToBranch(branch);
+        party.AddSite(branch, "Fictional Overpost Site");
+        Site site = party.Sites.Single();
+
+        SalesOpportunity sales = SalesOpportunity.Create(branch, party, site);
+        sales.AssignOwner(ownerUserId);
+        sales.AssignToUser(assignedUserId);
+
+        (SalesOpportunity wonOpportunity, WorkOrder workOrder) = TestWorkOrderFactory.CreateFromWon(branch, party, site);
+        wonOpportunity.AssignOwner(ownerUserId);
+        wonOpportunity.AssignToUser(assignedUserId);
+        workOrder.AssignToUser(assignedUserId);
+        db.AddRange(party, sales, wonOpportunity, workOrder);
+        await db.SaveChangesAsync();
+
+        return new(
+            party.Id,
+            sales.Id,
+            workOrder.Id,
+            branch.Id,
+            otherBranch.Id,
+            ownerUserId,
+            assignedUserId,
+            actorUserId);
+    }
+
     private static void AssertSecurityHeaders(HttpResponseMessage response)
     {
         Assert.Equal(ExpectedContentSecurityPolicy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
@@ -423,4 +663,14 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
         int StatusCode,
         string Outcome,
         string Message);
+
+    private sealed record OverpostSeed(
+        Guid PartyId,
+        Guid SalesOpportunityId,
+        Guid WorkOrderId,
+        Guid BranchId,
+        Guid OtherBranchId,
+        string OwnerUserId,
+        string AssignedUserId,
+        string ActorUserId);
 }
