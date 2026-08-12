@@ -5,3 +5,7 @@ const validationSummary = document.querySelector('.validation-summary-errors[tab
 if (validationSummary) {
   validationSummary.focus();
 }
+
+if (document.querySelector('[data-remove-query-after-load]')) {
+  window.history.replaceState(null, document.title, window.location.pathname);
+}

@@ -8,6 +8,7 @@ using FieldOps.Web.Services;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace FieldOps.Web.Controllers;
 
@@ -32,6 +33,7 @@ public sealed class AdministrationController : Controller
     }
 
     [HttpPost("reset")]
+    [EnableRateLimiting(RateLimitPolicies.DemoReset)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Reset(
         DemoResetViewModel model,

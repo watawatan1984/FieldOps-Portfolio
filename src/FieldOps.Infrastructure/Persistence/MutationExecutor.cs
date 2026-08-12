@@ -1,6 +1,9 @@
 using System.Diagnostics;
 
 using FieldOps.Features.Abstractions;
+using FieldOps.Features.Parties;
+using FieldOps.Features.Sales;
+using FieldOps.Features.Work;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -54,17 +57,34 @@ public sealed class MutationExecutor(
                 commitElapsedMs);
             return result;
         }
-        catch
+        catch (Exception exception)
         {
+            string outcome = IsConcurrencyConflict(exception) ? "conflict" : "failure";
             logger.LogWarning(
                 "Database mutation {Operation} completed with {Outcome} in {MutationElapsedMs} ms; lock wait {LockWaitElapsedMs} ms; save {SaveChangesElapsedMs} ms; commit {CommitElapsedMs} ms",
                 operation,
-                "failure",
+                outcome,
                 mutationStopwatch.ElapsedMilliseconds,
                 lockWaitElapsedMs,
                 saveChangesElapsedMs,
                 commitElapsedMs);
             throw;
         }
+    }
+
+    private static bool IsConcurrencyConflict(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is DbUpdateConcurrencyException or
+                PartyConcurrencyException or
+                SalesConcurrencyException or
+                WorkOrderConcurrencyException)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

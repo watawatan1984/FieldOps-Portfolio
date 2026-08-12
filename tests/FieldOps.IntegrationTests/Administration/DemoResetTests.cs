@@ -318,7 +318,11 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
         Assert.Equal(HttpStatusCode.OK, dashboard.StatusCode);
         Assert.Contains("初期化が完了しました", dashboardHtml, StringComparison.Ordinal);
         Assert.Contains("data-demo-reset-completed", dashboardHtml, StringComparison.Ordinal);
-        Assert.Contains("window.history.replaceState", dashboardHtml, StringComparison.Ordinal);
+        Assert.Contains("data-remove-query-after-load", dashboardHtml, StringComparison.Ordinal);
+        Assert.Contains("/js/site.js", dashboardHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.history.replaceState", dashboardHtml, StringComparison.Ordinal);
+        string siteScript = await client.GetStringAsync("/js/site.js");
+        Assert.Contains("window.history.replaceState", siteScript, StringComparison.Ordinal);
     }
 
     [Fact]

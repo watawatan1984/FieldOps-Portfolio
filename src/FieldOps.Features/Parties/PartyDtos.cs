@@ -7,6 +7,8 @@ namespace FieldOps.Features.Parties;
 public sealed class PartySearchRequest
 {
     public Guid BranchId { get; init; }
+
+    [StringLength(100)]
     public string? Search { get; init; }
     public PartyRoleType? Role { get; init; }
     public int Page { get; init; } = 1;

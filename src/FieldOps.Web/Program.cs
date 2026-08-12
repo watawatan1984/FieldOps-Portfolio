@@ -21,6 +21,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
 
+using Npgsql;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
@@ -30,6 +32,7 @@ builder.Logging.AddConsoleFormatter<RedactedJsonConsoleFormatter, ConsoleFormatt
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddRateLimiter(RateLimitPolicies.Configure);
 builder.Services.AddOptions<DemoModeOptions>()
     .Bind(builder.Configuration.GetSection(DemoModeOptions.SectionName))
     .Validate(
@@ -93,6 +96,7 @@ await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -104,6 +108,8 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseMiddleware<RequestLoggingMiddleware>();
+app.UseAuthorization();
+app.UseRateLimiter();
 app.UseExceptionHandler(new ExceptionHandlerOptions
 {
     AllowStatusCode404Response = true,
@@ -112,12 +118,15 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
     {
         Exception exception = context.Features.Get<IExceptionHandlerFeature>()?.Error
             ?? new InvalidOperationException("An exception was not available to the handler.");
-        (int statusCode, string category, string safeType) = exception switch
+        Exception classifiedException = exception.GetBaseException();
+        (int statusCode, string category, string safeType) = classifiedException switch
         {
             DomainException => (StatusCodes.Status400BadRequest, "domain", nameof(DomainException)),
             DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "concurrency", nameof(DbUpdateConcurrencyException)),
             UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "authorization", nameof(UnauthorizedAccessException)),
             KeyNotFoundException => (StatusCodes.Status404NotFound, "not_found", nameof(KeyNotFoundException)),
+            TimeoutException => (StatusCodes.Status503ServiceUnavailable, "database_timeout", nameof(TimeoutException)),
+            NpgsqlException => (StatusCodes.Status503ServiceUnavailable, "database_unavailable", nameof(NpgsqlException)),
             _ => (StatusCodes.Status500InternalServerError, "unexpected", "UnhandledException")
         };
         ILogger safeExceptionLogger = context.RequestServices
@@ -132,7 +141,6 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
         await context.Response.WriteAsJsonAsync(new { correlationId = context.TraceIdentifier });
     }
 });
-app.UseAuthorization();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {

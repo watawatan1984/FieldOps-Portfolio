@@ -4,22 +4,34 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+using Npgsql;
+
 namespace FieldOps.IntegrationTests.Infrastructure;
 
 public sealed class FieldOpsWebApplicationFactory(
     string connectionString,
     Action<IServiceCollection>? configureServices = null,
     Action<ILoggingBuilder>? configureLogging = null,
-    IReadOnlyDictionary<string, string?>? configuration = null) : WebApplicationFactory<Program>
+    IReadOnlyDictionary<string, string?>? configuration = null,
+    string? environment = null) : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting("ConnectionStrings:FieldOps", connectionString);
+        string testConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Pooling = false
+        }.ConnectionString;
+        if (environment is not null)
+        {
+            builder.UseEnvironment(environment);
+        }
+
+        builder.UseSetting("ConnectionStrings:FieldOps", testConnectionString);
         builder.ConfigureAppConfiguration(configurationBuilder =>
         {
             Dictionary<string, string?> configurationValues = new(StringComparer.Ordinal)
             {
-                ["ConnectionStrings:FieldOps"] = connectionString,
+                ["ConnectionStrings:FieldOps"] = testConnectionString,
                 ["DemoMode:Enabled"] = "true",
                 ["DemoMode:DatasetIdentifier"] = "fieldops-portal-fictional-demo",
                 ["DemoMode:DatasetVersion"] = "1"

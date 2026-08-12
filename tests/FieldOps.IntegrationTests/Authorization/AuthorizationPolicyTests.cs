@@ -216,19 +216,23 @@ public sealed class AuthorizationPolicyTests(PostgresFixture postgres)
             .. BuildResourceCases(DemoRoleNames.FieldTechnician, resources, [true, false, true, false, true, false, true, false])
         ];
 
-        foreach ((string role, BranchResourceAction action, string resourcePath, HttpStatusCode expected) in cases)
+        foreach (IGrouping<string, (string Role, BranchResourceAction Action, string ResourcePath, HttpStatusCode Expected)> roleCases in
+            cases.GroupBy(testCase => testCase.Role, StringComparer.Ordinal))
         {
             using HttpClient client = application.CreateClient(new()
             {
                 AllowAutoRedirect = false,
                 BaseAddress = new Uri("https://localhost")
             });
-            await LoginAsAsync(client, role);
-            using HttpResponseMessage response = await client.GetAsync(
-                $"/authorization-probe/{resourcePath}");
-            Assert.True(
-                response.StatusCode == expected,
-                $"{role} requesting {action}: expected {(int)expected}, received {(int)response.StatusCode}.");
+            await LoginAsAsync(client, roleCases.Key);
+            foreach ((string role, BranchResourceAction action, string resourcePath, HttpStatusCode expected) in roleCases)
+            {
+                using HttpResponseMessage response = await client.GetAsync(
+                    $"/authorization-probe/{resourcePath}");
+                Assert.True(
+                    response.StatusCode == expected,
+                    $"{role} requesting {action}: expected {(int)expected}, received {(int)response.StatusCode}.");
+            }
         }
 
         using HttpClient technicianClient = application.CreateClient(new()

@@ -35,7 +35,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - FieldOps Portal</title>
-    <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/FieldOps.Web.styles.css" asp-append-version="true" />
@@ -119,8 +118,7 @@
             <main role="main" class="app-content">
                 @if (hasResetCompletion)
                 {
-                    <div class="alert alert-success" role="status" data-demo-reset-completed>初期化が完了しました。相関 ID: @resetCompletionCorrelationId</div>
-                    <script>window.history.replaceState(null, document.title, window.location.pathname);</script>
+                    <div class="alert alert-success" role="status" data-demo-reset-completed data-remove-query-after-load>初期化が完了しました。相関 ID: @resetCompletionCorrelationId</div>
                 }
                 @RenderBody()
             </main>

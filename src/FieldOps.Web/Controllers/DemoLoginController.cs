@@ -3,11 +3,13 @@ using System.Security.Cryptography;
 using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Web.Models;
+using FieldOps.Web.Services;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace FieldOps.Web.Controllers;
 
@@ -42,6 +44,7 @@ public sealed class DemoLoginController(
     }
 
     [HttpPost]
+    [EnableRateLimiting(RateLimitPolicies.DemoLogin)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Index(
         [FromForm] string roleToken,

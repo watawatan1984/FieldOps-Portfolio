@@ -21,6 +21,11 @@ public sealed class PartiesController(
         [FromQuery] PartySearchRequest request,
         CancellationToken cancellationToken)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
         if (request.BranchId == Guid.Empty)
         {
             Guid branchId = Guid.TryParse(

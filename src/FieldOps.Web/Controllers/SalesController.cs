@@ -22,6 +22,11 @@ public sealed class SalesController(
     [HttpGet]
     public async Task<IActionResult> Index([FromQuery] SalesSearchRequest request, CancellationToken cancellationToken)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
         if (request.BranchId == Guid.Empty && !User.IsInRole(DemoRoleNames.SystemAdministrator))
         {
             Guid branchId = Guid.TryParse(User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType), out Guid claimedBranchId)

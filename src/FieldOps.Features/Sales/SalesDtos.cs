@@ -14,6 +14,8 @@ public sealed class SalesSearchRequest
     public DateTime? ExpectedCloseTo { get; init; }
     public decimal? MinimumAmount { get; init; }
     public decimal? MaximumAmount { get; init; }
+
+    [StringLength(100)]
     public string? Search { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = SalesQueries.DefaultPageSize;
