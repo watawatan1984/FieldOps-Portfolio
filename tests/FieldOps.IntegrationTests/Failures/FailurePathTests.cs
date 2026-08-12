@@ -24,7 +24,8 @@ namespace FieldOps.IntegrationTests.Failures;
 public sealed class FailurePathTests(PostgresFixture postgres)
 {
     private const string ExpectedContentSecurityPolicy =
-        "default-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+        "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
+        "img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
     [Fact]
     public async Task WebFactoryPreservesPoolingAndDisposalDrainsOnlyItsDatabasePool()

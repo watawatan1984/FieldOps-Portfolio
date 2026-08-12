@@ -3,7 +3,8 @@ namespace FieldOps.Web.Middleware;
 public sealed class SecurityHeadersMiddleware(RequestDelegate next)
 {
     public const string ContentSecurityPolicy =
-        "default-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+        "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
+        "img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
     public async Task InvokeAsync(HttpContext context)
     {
