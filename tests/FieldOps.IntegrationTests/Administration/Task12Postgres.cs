@@ -6,6 +6,7 @@ namespace FieldOps.IntegrationTests.Administration;
 
 internal sealed class Task12Postgres(PostgresFixture fixture)
 {
+    private static readonly TimeSpan ActivityDeadline = TimeSpan.FromSeconds(5);
     private readonly List<string> _connectionStrings = [];
 
     public async Task<string> CreateEmptyDatabaseAsync()
@@ -22,25 +23,54 @@ internal sealed class Task12Postgres(PostgresFixture fixture)
     {
         foreach (string connectionString in _connectionStrings)
         {
+            using CancellationTokenSource deadline = new(ActivityDeadline);
+            CancellationToken cancellationToken = deadline.Token;
+            List<string> remainingConnections = [];
             await using NpgsqlConnection connection = new(connectionString);
-            await connection.OpenAsync();
-            await using NpgsqlCommand command = new(
-                """
-                SELECT
-                    count(*) FILTER (WHERE pid <> pg_backend_pid()),
-                    count(*) FILTER (WHERE pid <> pg_backend_pid() AND state = 'idle in transaction')
-                FROM pg_stat_activity
-                WHERE datname = current_database()
-                """,
-                connection);
-            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
-            await reader.ReadAsync();
-            long otherConnections = reader.GetInt64(0);
-            long idleInTransaction = reader.GetInt64(1);
-            if (otherConnections != 0 || idleInTransaction != 0)
+            try
+            {
+                await connection.OpenAsync(cancellationToken).WaitAsync(cancellationToken);
+                await using NpgsqlCommand command = new(
+                    """
+                    SELECT pid, state, COALESCE(application_name, ''),
+                           COALESCE(wait_event_type, ''), COALESCE(wait_event, ''), COALESCE(md5(query), '')
+                    FROM pg_stat_activity
+                    WHERE datname = current_database() AND pid <> pg_backend_pid()
+                    ORDER BY pid
+                    """,
+                    connection)
+                {
+                    CommandTimeout = 5
+                };
+
+                while (true)
+                {
+                    remainingConnections.Clear();
+                    await using (NpgsqlDataReader reader =
+                        await command.ExecuteReaderAsync(cancellationToken).WaitAsync(cancellationToken))
+                    {
+                        while (await reader.ReadAsync(cancellationToken).WaitAsync(cancellationToken))
+                        {
+                            remainingConnections.Add(
+                                $"pid={reader.GetInt32(0)},state={reader.GetString(1)}," +
+                                $"application={reader.GetString(2)},wait={reader.GetString(3)}/{reader.GetString(4)}," +
+                                $"queryHash={reader.GetString(5)}");
+                        }
+                    }
+
+                    if (remainingConnections.Count == 0)
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken);
+                }
+            }
+            catch (OperationCanceledException)
             {
                 throw new InvalidOperationException(
-                    $"Task 12 database activity leaked: connections={otherConnections}, idle-in-transaction={idleInTransaction}.");
+                    "Task 12 database activity failed to reach zero before the absolute 5-second deadline; " +
+                    $"last safe diagnostics: {string.Join(";", remainingConnections)}");
             }
         }
     }

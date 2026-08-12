@@ -688,6 +688,157 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
     }
 
     [Fact]
+    public async Task PostCommitDisposeFailureCannotTurnCommittedResetIntoFailure()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        ThrowingTransactionDisposer disposal = new(DemoResetTransactionDisposal.CommittedSuccess);
+        CapturingResetLoggerProvider logs = new();
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            services =>
+            {
+                services.RemoveAll<IDemoResetTransactionDisposer>();
+                services.AddSingleton<IDemoResetTransactionDisposer>(disposal);
+            },
+            logging => logging.AddProvider(logs));
+        _ = application.CreateClient();
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        IDemoResetService service = scope.ServiceProvider.GetRequiredService<IDemoResetService>();
+        DemoResetCommand command = new(
+            "post-commit-dispose",
+            DemoDataManifest.UsersByRole[DemoRoleNames.SystemAdministrator].Id,
+            "post-commit-dispose-correlation");
+
+        DemoResetResult result = await service.ResetAsync(command);
+        DemoResetResult stored = await service.ResetAsync(command with
+        {
+            CorrelationId = "post-commit-dispose-ignored-correlation"
+        });
+
+        Assert.False(result.WasAlreadyCompleted);
+        Assert.Equal(command.CorrelationId, result.CorrelationId);
+        Assert.True(stored.WasAlreadyCompleted);
+        Assert.Equal(result.CorrelationId, stored.CorrelationId);
+        Assert.Equal(result.DurationMilliseconds, stored.DurationMilliseconds);
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        DemoResetExecution execution = await dbContext.DemoResetExecutions
+            .SingleAsync(item => item.IdempotencyKey == command.IdempotencyKey);
+        Assert.Equal(DemoResetState.Completed, execution.State);
+        Assert.Equal(DemoDataManifest.BranchCount, await dbContext.Branches.CountAsync());
+        Assert.Equal(DemoDataManifest.PartyCount, await dbContext.Parties.CountAsync());
+        Assert.Equal(DemoDataManifest.SalesOpportunityCount, await dbContext.SalesOpportunities.CountAsync());
+        Assert.Equal(DemoDataManifest.WorkOrderCount, await dbContext.WorkOrders.CountAsync());
+        Assert.Equal(
+            DemoDataManifest.WorkEventCount,
+            await dbContext.Set<FieldOps.Domain.Entities.WorkEvent>().CountAsync());
+        Assert.Equal(DemoDataManifest.DemoUserCount, await dbContext.Users.CountAsync());
+        Assert.Equal(1, await dbContext.AuditEntries.CountAsync(item =>
+            item.AggregateId == execution.Id && item.Action == "ResetCompleted"));
+        Assert.Equal(0, await dbContext.AuditEntries.CountAsync(item =>
+            item.AggregateId == execution.Id && item.Action == "ResetFailed"));
+        CapturedResetLog cleanupLog = logs.Entries.Single(entry =>
+            entry.Message.StartsWith("Demo reset transaction dispose cleanup failed;", StringComparison.Ordinal) &&
+            Equals(entry.Properties.GetValueOrDefault("CorrelationId"), command.CorrelationId));
+        Assert.Equal("Unexpected", cleanupLog.Properties["FailureCategory"]);
+        Assert.DoesNotContain(ThrowingTransactionDisposer.RawMessage, cleanupLog.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StoredCompletedDisposeFailureStillReturnsTheStoredSuccessWithoutFailureEvidence()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        ThrowingTransactionDisposer disposal = new(DemoResetTransactionDisposal.StoredCompleted);
+        CapturingResetLoggerProvider logs = new();
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            services =>
+            {
+                services.RemoveAll<IDemoResetTransactionDisposer>();
+                services.AddSingleton<IDemoResetTransactionDisposer>(disposal);
+            },
+            logging => logging.AddProvider(logs));
+        _ = application.CreateClient();
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        IDemoResetService service = scope.ServiceProvider.GetRequiredService<IDemoResetService>();
+        DemoResetCommand command = new(
+            "stored-completed-dispose",
+            DemoDataManifest.UsersByRole[DemoRoleNames.SystemAdministrator].Id,
+            "stored-completed-original-correlation");
+        DemoResetResult first = await service.ResetAsync(command);
+
+        DemoResetResult stored = await service.ResetAsync(command with
+        {
+            CorrelationId = "stored-completed-ignored-correlation"
+        });
+
+        Assert.True(stored.WasAlreadyCompleted);
+        Assert.Equal(first.CorrelationId, stored.CorrelationId);
+        Assert.Equal(first.DurationMilliseconds, stored.DurationMilliseconds);
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        DemoResetExecution execution = await dbContext.DemoResetExecutions
+            .SingleAsync(item => item.IdempotencyKey == command.IdempotencyKey);
+        Assert.Equal(DemoResetState.Completed, execution.State);
+        Assert.Equal(1, await dbContext.AuditEntries.CountAsync(item =>
+            item.AggregateId == execution.Id && item.Action == "ResetCompleted"));
+        Assert.Equal(0, await dbContext.AuditEntries.CountAsync(item =>
+            item.AggregateId == execution.Id && item.Action == "ResetFailed"));
+        CapturedResetLog cleanupLog = logs.Entries.Single(entry =>
+            entry.Message.StartsWith("Demo reset transaction dispose cleanup failed;", StringComparison.Ordinal) &&
+            Equals(entry.Properties.GetValueOrDefault("CorrelationId"), first.CorrelationId));
+        Assert.Equal("Unexpected", cleanupLog.Properties["FailureCategory"]);
+        Assert.DoesNotContain(ThrowingTransactionDisposer.RawMessage, cleanupLog.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StoredFailedDisposeFailureStillReturnsTheOriginalImmutableFailure()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        OneShotThrowingPhaseObserver phaseFailure = new(DemoResetPhase.RowsDeleted);
+        ThrowingTransactionDisposer disposal = new(DemoResetTransactionDisposal.StoredFailed);
+        CapturingResetLoggerProvider logs = new();
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            services =>
+            {
+                services.RemoveAll<IDemoResetPhaseObserver>();
+                services.AddSingleton<IDemoResetPhaseObserver>(phaseFailure);
+                services.RemoveAll<IDemoResetTransactionDisposer>();
+                services.AddSingleton<IDemoResetTransactionDisposer>(disposal);
+            },
+            logging => logging.AddProvider(logs));
+        _ = application.CreateClient();
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        IDemoResetService service = scope.ServiceProvider.GetRequiredService<IDemoResetService>();
+        DemoResetCommand command = new(
+            "stored-failed-dispose",
+            DemoDataManifest.UsersByRole[DemoRoleNames.SystemAdministrator].Id,
+            "stored-failed-original-correlation");
+        await Assert.ThrowsAsync<DemoResetFailedException>(() => service.ResetAsync(command));
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        DemoResetExecution original = await dbContext.DemoResetExecutions
+            .SingleAsync(item => item.IdempotencyKey == command.IdempotencyKey);
+
+        DemoResetFailedException stored = await Assert.ThrowsAsync<DemoResetFailedException>(() =>
+            service.ResetAsync(command with { CorrelationId = "stored-failed-ignored-correlation" }));
+
+        Assert.True(stored.WasPreviouslyRecorded);
+        Assert.Equal(original.CorrelationId, stored.CorrelationId);
+        Assert.Equal(original.DurationMilliseconds, stored.DurationMilliseconds);
+        Assert.Equal(DemoResetState.Failed, original.State);
+        Assert.Equal(1, await dbContext.DemoResetExecutions.CountAsync(item =>
+            item.IdempotencyKey == command.IdempotencyKey));
+        Assert.Equal(1, await dbContext.AuditEntries.CountAsync(item =>
+            item.AggregateId == original.Id && item.Action == "ResetFailed"));
+        Assert.Equal(0, await dbContext.AuditEntries.CountAsync(item =>
+            item.AggregateId == original.Id && item.Action == "ResetCompleted"));
+        CapturedResetLog cleanupLog = logs.Entries.Single(entry =>
+            entry.Message.StartsWith("Demo reset transaction dispose cleanup failed;", StringComparison.Ordinal) &&
+            Equals(entry.Properties.GetValueOrDefault("CorrelationId"), original.CorrelationId));
+        Assert.Equal("Unexpected", cleanupLog.Properties["FailureCategory"]);
+        Assert.DoesNotContain(ThrowingTransactionDisposer.RawMessage, cleanupLog.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DatabaseUniquelyConstrainsTheIdempotencyKey()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
@@ -1438,6 +1589,24 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
             return phase == failurePhase && Interlocked.CompareExchange(ref _thrown, 1, 0) == 0
                 ? Task.FromException(new InvalidOperationException("Injected one-shot reset failure."))
                 : Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingTransactionDisposer(
+        DemoResetTransactionDisposal failureDisposal) : IDemoResetTransactionDisposer
+    {
+        public const string RawMessage = "raw simulated transaction disposal detail";
+
+        public async Task DisposeAsync(
+            Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction,
+            DemoResetTransactionDisposal disposal,
+            CancellationToken cancellationToken)
+        {
+            await transaction.DisposeAsync();
+            if (disposal == failureDisposal)
+            {
+                throw new InvalidOperationException(RawMessage);
+            }
         }
     }
 }

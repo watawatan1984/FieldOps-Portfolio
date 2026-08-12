@@ -17,6 +17,7 @@ public sealed class DemoResetService(
     DemoResetFailureEvidenceWriter failureEvidenceWriter,
     IDemoModeVerifier demoModeVerifier,
     IDemoResetPhaseObserver phaseObserver,
+    IDemoResetTransactionDisposer transactionDisposer,
     TimeProvider timeProvider,
     ILogger<DemoResetService> logger) : IDemoResetService
 {
@@ -50,6 +51,12 @@ public sealed class DemoResetService(
             if (execution?.State == DemoResetState.Completed)
             {
                 await transaction.CommitAsync(cancellationToken);
+                IDbContextTransaction completedTransaction = transaction;
+                transaction = null;
+                await DisposeTransactionAsync(
+                    completedTransaction,
+                    execution.CorrelationId,
+                    DemoResetTransactionDisposal.StoredCompleted);
                 return StoredResult(execution);
             }
 
@@ -61,8 +68,12 @@ public sealed class DemoResetService(
             if (execution?.State == DemoResetState.Failed)
             {
                 await transaction.CommitAsync(cancellationToken);
-                await transaction.DisposeAsync();
+                IDbContextTransaction failedOutcomeTransaction = transaction;
                 transaction = null;
+                await DisposeTransactionAsync(
+                    failedOutcomeTransaction,
+                    execution.CorrelationId,
+                    DemoResetTransactionDisposal.StoredFailed);
                 throw DemoResetFailedException.PreviouslyRecorded(execution);
             }
 
@@ -110,8 +121,12 @@ public sealed class DemoResetService(
             await dbContext.SaveChangesAsync(cancellationToken);
             await phaseObserver.ObserveAsync(DemoResetPhase.BeforeCommit, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            await transaction.DisposeAsync();
+            IDbContextTransaction successfulTransaction = transaction;
             transaction = null;
+            await DisposeTransactionAsync(
+                successfulTransaction,
+                command.CorrelationId,
+                DemoResetTransactionDisposal.CommittedSuccess);
 
             logger.LogInformation(
                 "Demo reset completed with {Outcome}; correlation {CorrelationId}; duration {DurationMilliseconds} ms",
@@ -169,7 +184,10 @@ public sealed class DemoResetService(
         {
             if (transaction is not null)
             {
-                await DisposeTransactionAsync(transaction, command.CorrelationId);
+                await DisposeTransactionAsync(
+                    transaction,
+                    command.CorrelationId,
+                    DemoResetTransactionDisposal.FailedCleanup);
             }
         }
     }
@@ -191,12 +209,17 @@ public sealed class DemoResetService(
                 DemoResetFailureClassifier.Classify(rollbackException));
         }
 
-        await DisposeTransactionAsync(transaction, correlationId, cleanupTimeout.Token);
+        await DisposeTransactionAsync(
+            transaction,
+            correlationId,
+            DemoResetTransactionDisposal.FailedCleanup,
+            cleanupTimeout.Token);
     }
 
     private async Task DisposeTransactionAsync(
         IDbContextTransaction transaction,
         string correlationId,
+        DemoResetTransactionDisposal disposal,
         CancellationToken cancellationToken = default)
     {
         using CancellationTokenSource? ownedTimeout = cancellationToken.CanBeCanceled
@@ -205,15 +228,21 @@ public sealed class DemoResetService(
         CancellationToken effectiveToken = ownedTimeout?.Token ?? cancellationToken;
         try
         {
-            await transaction.DisposeAsync().AsTask().WaitAsync(effectiveToken);
+            await transactionDisposer.DisposeAsync(transaction, disposal, effectiveToken)
+                .WaitAsync(effectiveToken);
         }
         catch (Exception disposeException)
         {
-            logger.LogWarning(
-                "Demo reset transaction dispose cleanup failed; correlation {CorrelationId}; category {FailureCategory}",
-                correlationId,
-                DemoResetFailureClassifier.Classify(disposeException));
+            LogDisposalFailure(correlationId, disposeException);
         }
+    }
+
+    private void LogDisposalFailure(string correlationId, Exception exception)
+    {
+        logger.LogWarning(
+            "Demo reset transaction dispose cleanup failed; correlation {CorrelationId}; category {FailureCategory}",
+            correlationId,
+            DemoResetFailureClassifier.Classify(exception));
     }
 
     private static DemoResetResult StoredResult(DemoResetExecution execution)

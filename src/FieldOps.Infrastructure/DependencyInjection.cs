@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<DemoResetFailureEvidenceWriter>();
         services.AddScoped<IDemoResetService, DemoResetService>();
         services.AddScoped<IDemoResetPhaseObserver, NullDemoResetPhaseObserver>();
+        services.AddScoped<IDemoResetTransactionDisposer, DemoResetTransactionDisposer>();
         services.AddScoped<IFieldOpsDbContext>(provider => provider.GetRequiredService<FieldOpsDbContext>());
         services.AddScoped<IMutationExecutor, MutationExecutor>();
         services.AddScoped<IPartyNameLock, PostgresPartyNameLock>();

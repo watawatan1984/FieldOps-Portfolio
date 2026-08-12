@@ -24,6 +24,34 @@ namespace FieldOps.IntegrationTests.Features;
 public sealed class WorkHistorySearchTests(PostgresFixture postgres)
 {
     [Fact]
+    public async Task DatabaseCleanupProbeUsesOneAbsoluteDeadline()
+    {
+        TaskCompletionSource cancellationObserved = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Stopwatch elapsed = Stopwatch.StartNew();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            TestDatabaseLease.RunWithAbsoluteDeadlineAsync(
+                async cancellationToken =>
+                {
+                    Assert.True(cancellationToken.CanBeCanceled);
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        cancellationObserved.TrySetResult();
+                        throw;
+                    }
+                },
+                TimeSpan.FromMilliseconds(100)));
+
+        await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.InRange(elapsed.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
     public async Task EmptyCriteriaReturnsAllWorkInTheAuthorizedBranch()
     {
         await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
@@ -763,6 +791,8 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
 
     private sealed class TestDatabaseLease(string connectionString) : IAsyncDisposable
     {
+        private static readonly TimeSpan CleanupDeadline = TimeSpan.FromSeconds(5);
+
         public string ConnectionString { get; } = connectionString;
 
         public async ValueTask DisposeAsync()
@@ -775,46 +805,71 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
                 Database = "postgres",
                 Pooling = false
             };
-            await using NpgsqlConnection adminConnection = new(adminConnectionString.ConnectionString);
-            await adminConnection.OpenAsync();
-            await using NpgsqlCommand inspectConnections = new(
-                """
-                SELECT pid, state, COALESCE(wait_event_type, ''), COALESCE(wait_event, ''), COALESCE(md5(query), '')
-                FROM pg_stat_activity
-                WHERE datname = @databaseName
-                ORDER BY pid
-                """,
-                adminConnection);
-            inspectConnections.Parameters.AddWithValue(
-                "databaseName",
-                new NpgsqlConnectionStringBuilder(ConnectionString).Database!);
-            Stopwatch cleanupTimeout = Stopwatch.StartNew();
             List<string> remainingConnections = [];
-            do
+            try
             {
-                remainingConnections.Clear();
-                await using (NpgsqlDataReader reader = await inspectConnections.ExecuteReaderAsync())
-                {
-                    while (await reader.ReadAsync())
+                await RunWithAbsoluteDeadlineAsync(
+                    async cancellationToken =>
                     {
-                        remainingConnections.Add(
-                            $"pid={reader.GetInt32(0)},state={reader.GetString(1)}," +
-                            $"wait={reader.GetString(2)}/{reader.GetString(3)},queryHash={reader.GetString(4)}");
-                    }
-                }
+                        await using NpgsqlConnection adminConnection = new(adminConnectionString.ConnectionString);
+                        await adminConnection.OpenAsync(cancellationToken);
+                        await using NpgsqlCommand inspectConnections = new(
+                            """
+                            SELECT pid, state, COALESCE(wait_event_type, ''), COALESCE(wait_event, ''), COALESCE(md5(query), '')
+                            FROM pg_stat_activity
+                            WHERE datname = @databaseName
+                            ORDER BY pid
+                            """,
+                            adminConnection)
+                        {
+                            CommandTimeout = 5
+                        };
+                        inspectConnections.Parameters.AddWithValue(
+                            "databaseName",
+                            new NpgsqlConnectionStringBuilder(ConnectionString).Database!);
 
-                if (remainingConnections.Count == 0)
-                {
-                    return;
-                }
+                        while (true)
+                        {
+                            remainingConnections.Clear();
+                            await using (NpgsqlDataReader reader =
+                                await inspectConnections.ExecuteReaderAsync(cancellationToken))
+                            {
+                                while (await reader.ReadAsync(cancellationToken))
+                                {
+                                    remainingConnections.Add(
+                                        $"pid={reader.GetInt32(0)},state={reader.GetString(1)}," +
+                                        $"wait={reader.GetString(2)}/{reader.GetString(3)},queryHash={reader.GetString(4)}");
+                                }
+                            }
 
-                await Task.Delay(TimeSpan.FromMilliseconds(25));
+                            if (remainingConnections.Count == 0)
+                            {
+                                return;
+                            }
+
+                            await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken);
+                        }
+                    },
+                    CleanupDeadline);
             }
-            while (cleanupTimeout.Elapsed < TimeSpan.FromSeconds(5));
+            catch (OperationCanceledException)
+            {
+                string diagnostics = remainingConnections.Count == 0
+                    ? "no completed activity probe"
+                    : string.Join(";", remainingConnections);
+                throw new InvalidOperationException(
+                    "Task 10 database cleanup probe exceeded its absolute 5-second deadline; " +
+                    $"last safe activity diagnostics: {diagnostics}");
+            }
+        }
 
-            throw new InvalidOperationException(
-                $"Task 10 database cleanup left {remainingConnections.Count} connection(s) open after 5 seconds: " +
-                string.Join(";", remainingConnections));
+        public static async Task RunWithAbsoluteDeadlineAsync(
+            Func<CancellationToken, Task> operation,
+            TimeSpan deadline)
+        {
+            using CancellationTokenSource deadlineCancellation = new(deadline);
+            CancellationToken cancellationToken = deadlineCancellation.Token;
+            await operation(cancellationToken).WaitAsync(cancellationToken);
         }
     }
 }
