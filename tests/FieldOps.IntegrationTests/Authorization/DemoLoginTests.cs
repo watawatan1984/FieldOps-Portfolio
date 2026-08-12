@@ -1,9 +1,9 @@
 using System.Net;
 using System.Text.RegularExpressions;
 
-using FieldOps.IntegrationTests.Infrastructure;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
+using FieldOps.IntegrationTests.Infrastructure;
 using FieldOps.Web.Controllers;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -13,11 +13,59 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using Npgsql;
+
 namespace FieldOps.IntegrationTests.Authorization;
 
 [Collection(DatabaseCollection.Name)]
 public sealed class DemoLoginTests(PostgresFixture postgres)
 {
+    [Fact]
+    public async Task DisabledDemoModeHidesTheConvenienceLogin()
+    {
+        string connectionString = Task12ConnectionString(await postgres.CreateEmptyDatabaseAsync());
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            configuration: new Dictionary<string, string?>
+            {
+                ["DemoMode:Enabled"] = "false",
+                ["DemoMode:DatasetIdentifier"] = null,
+                ["DemoMode:DatasetVersion"] = null
+            });
+        using HttpClient client = application.CreateClient(new()
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+        using HttpResponseMessage response = await client.GetAsync("/demo-login");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task EnabledDemoModeWithAnUnapprovedDatasetConfigurationFailsStartup()
+    {
+        string connectionString = Task12ConnectionString(await postgres.CreateEmptyDatabaseAsync());
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            configuration: new Dictionary<string, string?>
+            {
+                ["DemoMode:Enabled"] = "true",
+                ["DemoMode:DatasetIdentifier"] = "unapproved-dataset",
+                ["DemoMode:DatasetVersion"] = "1"
+            });
+
+        OptionsValidationException exception = Assert.Throws<OptionsValidationException>(application.CreateClient);
+
+        Assert.Contains("exact approved dataset identifier and version", exception.Message, StringComparison.Ordinal);
+    }
+
+    private static string Task12ConnectionString(string connectionString)
+    {
+        return new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString;
+    }
+
     [Fact]
     public async Task LoginPageOffersExactlyFourPublicRolesWithoutPasswordInput()
     {

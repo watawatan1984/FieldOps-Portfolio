@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -776,19 +777,44 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
             };
             await using NpgsqlConnection adminConnection = new(adminConnectionString.ConnectionString);
             await adminConnection.OpenAsync();
-            await using NpgsqlCommand countConnections = new(
-                "SELECT count(*) FROM pg_stat_activity WHERE datname = @databaseName",
+            await using NpgsqlCommand inspectConnections = new(
+                """
+                SELECT pid, state, COALESCE(wait_event_type, ''), COALESCE(wait_event, ''), COALESCE(md5(query), '')
+                FROM pg_stat_activity
+                WHERE datname = @databaseName
+                ORDER BY pid
+                """,
                 adminConnection);
-            countConnections.Parameters.AddWithValue(
+            inspectConnections.Parameters.AddWithValue(
                 "databaseName",
                 new NpgsqlConnectionStringBuilder(ConnectionString).Database!);
-            long remainingConnections = (long)(await countConnections.ExecuteScalarAsync()
-                ?? throw new InvalidOperationException("PostgreSQL did not return the activity count."));
-            if (remainingConnections != 0)
+            Stopwatch cleanupTimeout = Stopwatch.StartNew();
+            List<string> remainingConnections = [];
+            do
             {
-                throw new InvalidOperationException(
-                    $"Task 10 database cleanup left {remainingConnections} connection(s) open.");
+                remainingConnections.Clear();
+                await using (NpgsqlDataReader reader = await inspectConnections.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        remainingConnections.Add(
+                            $"pid={reader.GetInt32(0)},state={reader.GetString(1)}," +
+                            $"wait={reader.GetString(2)}/{reader.GetString(3)},queryHash={reader.GetString(4)}");
+                    }
+                }
+
+                if (remainingConnections.Count == 0)
+                {
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(25));
             }
+            while (cleanupTimeout.Elapsed < TimeSpan.FromSeconds(5));
+
+            throw new InvalidOperationException(
+                $"Task 10 database cleanup left {remainingConnections.Count} connection(s) open after 5 seconds: " +
+                string.Join(";", remainingConnections));
         }
     }
 }

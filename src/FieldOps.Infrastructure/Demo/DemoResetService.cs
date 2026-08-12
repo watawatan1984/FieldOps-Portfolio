@@ -14,15 +14,20 @@ namespace FieldOps.Infrastructure.Demo;
 public sealed class DemoResetService(
     FieldOpsDbContext dbContext,
     DemoDataSeeder dataSeeder,
+    DemoResetFailureEvidenceWriter failureEvidenceWriter,
+    IDemoModeVerifier demoModeVerifier,
     IDemoResetPhaseObserver phaseObserver,
     TimeProvider timeProvider,
     ILogger<DemoResetService> logger) : IDemoResetService
 {
+    private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(5);
+
     public async Task<DemoResetResult> ResetAsync(
         DemoResetCommand command,
         CancellationToken cancellationToken = default)
     {
         Validate(command);
+        await demoModeVerifier.EnsureApprovedAsync(cancellationToken);
         Stopwatch stopwatch = Stopwatch.StartNew();
         DateTime startedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
         Guid executionId = Guid.NewGuid();
@@ -35,6 +40,8 @@ public sealed class DemoResetService(
                 $"SELECT pg_advisory_xact_lock({MutationExecutor.CoordinationLockKey})",
                 cancellationToken);
             await phaseObserver.ObserveAsync(DemoResetPhase.LockAcquired, cancellationToken);
+            await demoModeVerifier.EnsureApprovedAndLockMarkerAsync(cancellationToken);
+            await phaseObserver.ObserveAsync(DemoResetPhase.MarkerLocked, cancellationToken);
 
             DemoResetExecution? execution = await dbContext.DemoResetExecutions
                 .SingleOrDefaultAsync(
@@ -51,6 +58,14 @@ public sealed class DemoResetService(
                 throw new InvalidOperationException("A completed advisory-lock owner left a running reset state.");
             }
 
+            if (execution?.State == DemoResetState.Failed)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                await transaction.DisposeAsync();
+                transaction = null;
+                throw DemoResetFailedException.PreviouslyRecorded(execution);
+            }
+
             if (execution is null)
             {
                 execution = DemoResetExecution.Start(
@@ -60,11 +75,6 @@ public sealed class DemoResetService(
                     command.CorrelationId,
                     startedAtUtc);
                 dbContext.DemoResetExecutions.Add(execution);
-            }
-            else
-            {
-                executionId = execution.Id;
-                execution.Restart(command.ActorUserId, command.CorrelationId, startedAtUtc);
             }
 
             IReadOnlyDictionary<string, string> passwordHashes =
@@ -114,114 +124,113 @@ public sealed class DemoResetService(
                 durationMilliseconds,
                 false);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (DemoResetFailedException exception) when (exception.WasPreviouslyRecorded)
         {
-            if (transaction is not null)
-            {
-                await transaction.RollbackAsync(CancellationToken.None);
-                await transaction.DisposeAsync();
-                transaction = null;
-            }
-
-            dbContext.ChangeTracker.Clear();
+            throw;
+        }
+        catch (Exception exception)
+        {
             long durationMilliseconds = stopwatch.ElapsedMilliseconds;
-            await PersistFailureEvidenceAsync(
-                executionId,
-                command,
-                startedAtUtc,
-                durationMilliseconds,
-                CancellationToken.None);
             logger.LogError(
-                "Demo reset failed with {Outcome}; correlation {CorrelationId}; duration {DurationMilliseconds} ms; safe type {ExceptionType}",
-                "Failed",
+                "Demo reset failed; correlation {CorrelationId}; duration {DurationMilliseconds} ms; category {FailureCategory}",
                 command.CorrelationId,
                 durationMilliseconds,
-                exception.GetType().Name);
+                DemoResetFailureClassifier.Classify(exception));
+
+            IDbContextTransaction? failedTransaction = transaction;
+            transaction = null;
+            if (failedTransaction is not null)
+            {
+                await CleanupFailedTransactionAsync(failedTransaction, command.CorrelationId);
+            }
+
+            try
+            {
+                dbContext.ChangeTracker.Clear();
+            }
+            catch (Exception cleanupException)
+            {
+                logger.LogWarning(
+                    "Demo reset change-tracker cleanup failed; correlation {CorrelationId}; category {FailureCategory}",
+                    command.CorrelationId,
+                    DemoResetFailureClassifier.Classify(cleanupException));
+            }
+
+            await failureEvidenceWriter.TryPersistAsync(
+                executionId,
+                command.IdempotencyKey,
+                command.ActorUserId,
+                command.CorrelationId,
+                startedAtUtc,
+                durationMilliseconds);
             throw new DemoResetFailedException(command.CorrelationId, exception);
         }
         finally
         {
             if (transaction is not null)
             {
-                await transaction.DisposeAsync();
+                await DisposeTransactionAsync(transaction, command.CorrelationId);
             }
         }
     }
 
-    private async Task PersistFailureEvidenceAsync(
-        Guid executionId,
-        DemoResetCommand command,
-        DateTime startedAtUtc,
-        long durationMilliseconds,
-        CancellationToken cancellationToken)
+    private async Task CleanupFailedTransactionAsync(
+        IDbContextTransaction transaction,
+        string correlationId)
     {
+        using CancellationTokenSource cleanupTimeout = new(CleanupTimeout);
         try
         {
-            await using IDbContextTransaction failureTransaction =
-                await dbContext.Database.BeginTransactionAsync(cancellationToken);
-            await dbContext.Database.ExecuteSqlRawAsync(
-                $"SELECT pg_advisory_xact_lock({MutationExecutor.CoordinationLockKey})",
-                cancellationToken);
-            DemoResetExecution? execution = await dbContext.DemoResetExecutions
-                .SingleOrDefaultAsync(
-                    item => item.IdempotencyKey == command.IdempotencyKey,
-                    cancellationToken);
-            if (execution?.State == DemoResetState.Completed)
-            {
-                await failureTransaction.CommitAsync(cancellationToken);
-                return;
-            }
-
-            DateTime failedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-            if (execution is null)
-            {
-                execution = DemoResetExecution.Start(
-                    executionId,
-                    command.IdempotencyKey,
-                    command.ActorUserId,
-                    command.CorrelationId,
-                    startedAtUtc);
-                dbContext.DemoResetExecutions.Add(execution);
-            }
-            else
-            {
-                execution.Restart(command.ActorUserId, command.CorrelationId, startedAtUtc);
-            }
-
-            execution.Fail(failedAtUtc, durationMilliseconds);
-            dbContext.AuditEntries.Add(new AuditEntry(
-                "DemoReset",
-                execution.Id,
-                null,
-                "ResetFailed",
-                AuditOutcome("Failed", durationMilliseconds, command.CorrelationId),
-                string.Empty,
-                failedAtUtc,
-                command.ActorUserId));
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await failureTransaction.CommitAsync(cancellationToken);
+            await transaction.RollbackAsync(cleanupTimeout.Token).WaitAsync(cleanupTimeout.Token);
         }
-        catch (Exception evidenceException)
+        catch (Exception rollbackException)
         {
-            dbContext.ChangeTracker.Clear();
-            logger.LogError(
-                "Demo reset failure evidence could not be persisted; correlation {CorrelationId}; safe type {ExceptionType}",
-                command.CorrelationId,
-                evidenceException.GetType().Name);
+            logger.LogWarning(
+                "Demo reset transaction rollback cleanup failed; correlation {CorrelationId}; category {FailureCategory}",
+                correlationId,
+                DemoResetFailureClassifier.Classify(rollbackException));
+        }
+
+        await DisposeTransactionAsync(transaction, correlationId, cleanupTimeout.Token);
+    }
+
+    private async Task DisposeTransactionAsync(
+        IDbContextTransaction transaction,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        using CancellationTokenSource? ownedTimeout = cancellationToken.CanBeCanceled
+            ? null
+            : new CancellationTokenSource(CleanupTimeout);
+        CancellationToken effectiveToken = ownedTimeout?.Token ?? cancellationToken;
+        try
+        {
+            await transaction.DisposeAsync().AsTask().WaitAsync(effectiveToken);
+        }
+        catch (Exception disposeException)
+        {
+            logger.LogWarning(
+                "Demo reset transaction dispose cleanup failed; correlation {CorrelationId}; category {FailureCategory}",
+                correlationId,
+                DemoResetFailureClassifier.Classify(disposeException));
         }
     }
 
-    private static DemoResetResult StoredResult(DemoResetExecution execution) =>
-        new(
+    private static DemoResetResult StoredResult(DemoResetExecution execution)
+    {
+        return new(
             execution.IdempotencyKey,
             execution.CorrelationId,
             execution.DurationMilliseconds ?? 0,
             true);
+    }
 
-    private static string AuditOutcome(string state, long durationMilliseconds, string correlationId) =>
-        string.Create(
+    private static string AuditOutcome(string state, long durationMilliseconds, string correlationId)
+    {
+        return string.Create(
             CultureInfo.InvariantCulture,
             $"{state};durationMs={durationMilliseconds};correlationId={correlationId}");
+    }
 
     private static void Validate(DemoResetCommand command)
     {
@@ -246,8 +255,30 @@ public sealed class DemoResetService(
     }
 }
 
-public sealed class DemoResetFailedException(string correlationId, Exception innerException)
-    : Exception("The demo reset failed. Use the correlation identifier when retrying or requesting support.", innerException)
+public sealed class DemoResetFailedException : Exception
 {
-    public string CorrelationId { get; } = correlationId;
+    public DemoResetFailedException(string correlationId, Exception innerException)
+        : base("The demo reset failed. Use the correlation identifier when retrying or requesting support.", innerException)
+    {
+        CorrelationId = correlationId;
+    }
+
+    private DemoResetFailedException(string correlationId, long durationMilliseconds)
+        : base("This idempotency key already has an immutable failed reset outcome. Open a new confirmation page to retry.")
+    {
+        CorrelationId = correlationId;
+        DurationMilliseconds = durationMilliseconds;
+        WasPreviouslyRecorded = true;
+    }
+
+    public string CorrelationId { get; }
+
+    public long? DurationMilliseconds { get; }
+
+    public bool WasPreviouslyRecorded { get; }
+
+    internal static DemoResetFailedException PreviouslyRecorded(DemoResetExecution execution)
+    {
+        return new(execution.CorrelationId, execution.DurationMilliseconds ?? 0);
+    }
 }

@@ -22,7 +22,10 @@ public static class DependencyInjection
             .AddClaimsPrincipalFactory<DemoUserClaimsPrincipalFactory>()
             .AddDefaultTokenProviders();
         services.AddScoped<DemoIdentitySeeder>();
+        services.AddSingleton<DemoModeApprovalState>();
+        services.AddScoped<IDemoModeVerifier, DemoModeVerifier>();
         services.AddScoped<DemoDataSeeder>();
+        services.AddScoped<DemoResetFailureEvidenceWriter>();
         services.AddScoped<IDemoResetService, DemoResetService>();
         services.AddScoped<IDemoResetPhaseObserver, NullDemoResetPhaseObserver>();
         services.AddScoped<IFieldOpsDbContext>(provider => provider.GetRequiredService<FieldOpsDbContext>());

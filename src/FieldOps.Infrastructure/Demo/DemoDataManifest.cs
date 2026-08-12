@@ -4,6 +4,7 @@ namespace FieldOps.Infrastructure.Demo;
 
 public static class DemoDataManifest
 {
+    public static readonly Guid DatasetMarkerId = Guid.Parse("90000000-0000-4000-8000-000000000001");
     public static readonly DateTime EpochUtc = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     public const int BranchCount = 5;

@@ -209,6 +209,53 @@ public sealed class DemoResetConcurrencyTests(PostgresFixture fixture) : IAsyncL
         Assert.Equal(DemoDataManifest.BranchCount, await dbContext.Branches.CountAsync());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ApprovedMarkerRowIsLockedUntilTheResetTransactionCommits(bool deleteMarker)
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        MarkerRowLockObserver observer = new(connectionString, deleteMarker);
+        await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString, observer);
+        using HttpClient startup = application.CreateClient();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        Task<DemoResetResult> reset = RunResetAsync(
+            application.Services,
+            Command(
+                deleteMarker ? "marker-row-delete-lock" : "marker-row-update-lock",
+                deleteMarker ? "marker-row-delete-correlation" : "marker-row-update-correlation"),
+            timeout.Token);
+
+        try
+        {
+            int updateBackendPid = await observer.UpdateBackendPid.WaitAsync(timeout.Token);
+            await observer.BeforeCommit.WaitAsync(timeout.Token);
+            await WaitForBackendLockWaitAsync(connectionString, updateBackendPid, timeout.Token);
+            Assert.False(observer.UpdateTask?.IsCompleted ?? true);
+        }
+        catch
+        {
+            observer.ReleaseReset();
+            timeout.Cancel();
+            await ObserveCompletionAsync(reset, observer.UpdateTask);
+            throw;
+        }
+        finally
+        {
+            observer.ReleaseReset();
+        }
+
+        await reset.WaitAsync(timeout.Token);
+        await (observer.UpdateTask ?? throw new InvalidOperationException("Marker update did not start."))
+            .WaitAsync(timeout.Token);
+        await using AsyncServiceScope assertScope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = assertScope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.True(await dbContext.DemoDatasetMarkers.AnyAsync(marker =>
+            marker.Id == DemoDataManifest.DatasetMarkerId &&
+            marker.DatasetIdentifier == DemoModeOptions.ApprovedDatasetIdentifier &&
+            marker.DatasetVersion == DemoModeOptions.ApprovedDatasetVersion));
+    }
+
     private static FieldOpsWebApplicationFactory CreateApplication(
         string connectionString,
         IDemoResetPhaseObserver observer) =>
@@ -313,6 +360,34 @@ public sealed class DemoResetConcurrencyTests(PostgresFixture fixture) : IAsyncL
         }
     }
 
+    private static async Task WaitForBackendLockWaitAsync(
+        string connectionString,
+        int backendPid,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        while (true)
+        {
+            await using NpgsqlCommand command = new(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_locks
+                    WHERE pid = @backendPid
+                      AND NOT granted)
+                """,
+                connection);
+            command.Parameters.AddWithValue("backendPid", backendPid);
+            if ((bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false))
+            {
+                return;
+            }
+
+            await Task.Delay(20, cancellationToken);
+        }
+    }
+
     private static async Task ObserveCompletionAsync(params Task?[] tasks)
     {
         foreach (Task task in tasks.OfType<Task>())
@@ -348,5 +423,61 @@ public sealed class DemoResetConcurrencyTests(PostgresFixture fixture) : IAsyncL
         }
 
         public void Release() => _release.TrySetResult();
+    }
+
+    private sealed class MarkerRowLockObserver(
+        string connectionString,
+        bool deleteMarker) : IDemoResetPhaseObserver
+    {
+        private readonly TaskCompletionSource<int> _updateBackendPid =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _beforeCommit =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseReset =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _updateStarted;
+
+        public Task<int> UpdateBackendPid => _updateBackendPid.Task;
+
+        public Task BeforeCommit => _beforeCommit.Task;
+
+        public Task? UpdateTask { get; private set; }
+
+        public async Task ObserveAsync(DemoResetPhase phase, CancellationToken cancellationToken)
+        {
+            if (phase == DemoResetPhase.MarkerLocked &&
+                Interlocked.CompareExchange(ref _updateStarted, 1, 0) == 0)
+            {
+                UpdateTask = UpdateMarkerAndRollbackAsync(cancellationToken);
+                await _updateBackendPid.Task.WaitAsync(cancellationToken);
+            }
+
+            if (phase == DemoResetPhase.BeforeCommit)
+            {
+                _beforeCommit.TrySetResult();
+                await _releaseReset.Task.WaitAsync(cancellationToken);
+            }
+        }
+
+        public void ReleaseReset()
+        {
+            _releaseReset.TrySetResult();
+        }
+
+        private async Task UpdateMarkerAndRollbackAsync(CancellationToken cancellationToken)
+        {
+            await using NpgsqlConnection connection = new(connectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+            _updateBackendPid.TrySetResult(connection.ProcessID);
+            await using NpgsqlCommand command = new(
+                deleteMarker
+                    ? "DELETE FROM \"DemoDatasetMarkers\""
+                    : "UPDATE \"DemoDatasetMarkers\" SET \"DatasetVersion\" = 'blocked-update'",
+                connection,
+                transaction);
+            Assert.Equal(1, await command.ExecuteNonQueryAsync(cancellationToken));
+            await transaction.RollbackAsync(cancellationToken);
+        }
     }
 }

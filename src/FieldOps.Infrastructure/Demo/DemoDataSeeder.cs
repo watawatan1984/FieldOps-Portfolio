@@ -34,7 +34,7 @@ public sealed class DemoDataSeeder(
         string[] statements =
         [
             "DELETE FROM \"WorkEvents\"",
-            "DELETE FROM \"AuditEntries\"",
+            "DELETE FROM \"AuditEntries\" WHERE \"AggregateType\" <> 'DemoReset'",
             "DELETE FROM \"WorkOrders\"",
             "DELETE FROM \"SalesOpportunities\"",
             "DELETE FROM \"AspNetUserClaims\"",

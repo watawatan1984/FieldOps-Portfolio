@@ -12,7 +12,8 @@ namespace FieldOps.Infrastructure.Identity;
 public sealed class DemoIdentitySeeder(
     FieldOpsDbContext dbContext,
     RoleManager<IdentityRole> roleManager,
-    UserManager<ApplicationUser> userManager)
+    UserManager<ApplicationUser> userManager,
+    IDemoModeVerifier demoModeVerifier)
 {
     public static bool TryGetUserName(string role, out string userName)
     {
@@ -28,6 +29,11 @@ public sealed class DemoIdentitySeeder(
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
+        if (!await demoModeVerifier.IsApprovedAsync(cancellationToken))
+        {
+            return;
+        }
+
         await EnsureBranchesAsync(cancellationToken);
 
         foreach (string role in DemoRoleNames.All)

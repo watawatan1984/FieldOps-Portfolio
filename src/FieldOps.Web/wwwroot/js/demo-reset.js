@@ -9,10 +9,11 @@
     const submitButton = form.querySelector("[data-demo-reset-submit]");
     const overlay = document.querySelector("[data-demo-reset-overlay]");
     const errorPanel = form.querySelector("[data-demo-reset-error]");
+    const guidance = form.querySelector("[data-demo-reset-guidance]");
     const correlation = form.querySelector("[data-demo-reset-correlation]");
     let submitting = false;
 
-    const restore = (correlationId) => {
+    const restore = (correlationId, messages) => {
         submitting = false;
         form.setAttribute("aria-busy", "false");
         if (submitButton) {
@@ -22,6 +23,11 @@
         overlay?.classList.remove("d-flex");
         if (correlation) {
             correlation.textContent = correlationId || "不明";
+        }
+        if (guidance) {
+            guidance.textContent = messages?.length
+                ? messages.join(" ")
+                : "初期化に失敗しました。入力内容を確認して再試行してください。";
         }
         errorPanel?.classList.remove("d-none");
         errorPanel?.focus();
@@ -50,13 +56,24 @@
                 headers: { "X-Requested-With": "fetch" }
             });
             if (response.ok) {
-                window.location.assign("/");
+                const result = await response.json();
+                window.location.assign(result.redirectUrl || "/");
                 return;
             }
 
-            restore(response.headers.get("X-Correlation-ID"));
+            let problem = null;
+            if (response.headers.get("Content-Type")?.includes("application/json")) {
+                problem = await response.json();
+            }
+            const messages = problem?.errors
+                ? Object.values(problem.errors).flatMap(value => Array.isArray(value) ? value : [])
+                : [];
+            if (problem?.retry) {
+                messages.push(problem.retry);
+            }
+            restore(problem?.correlationId || response.headers.get("X-Correlation-ID"), messages);
         } catch {
-            restore(null);
+            restore(null, []);
         }
     });
 })();

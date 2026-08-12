@@ -23,10 +23,12 @@
     <form method="post" asp-controller="Administration" asp-action="Reset" data-demo-reset-form aria-busy="false">
         <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
         <div class="alert alert-danger d-none" role="alert" tabindex="-1" data-demo-reset-error>
-            初期化に失敗しました。再試行しても解決しない場合は、相関 ID
+            <span data-demo-reset-guidance>初期化に失敗しました。入力内容を確認して再試行してください。</span>
+            再試行しても解決しない場合は、相関 ID
             <code data-demo-reset-correlation>不明</code> を管理担当者へ伝えてください。
         </div>
         <input asp-for="IdempotencyKey" type="hidden" />
+        <input asp-for="IntentToken" type="hidden" />
         <div class="mb-3">
             <label asp-for="Confirmation" class="form-label">確認のため RESET と入力してください</label>
             <input asp-for="Confirmation" class="form-control" autocomplete="off" />

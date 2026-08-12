@@ -6,6 +6,7 @@ using FieldOps.Features.Parties;
 using FieldOps.Features.Sales;
 using FieldOps.Features.Work;
 using FieldOps.Infrastructure;
+using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 using FieldOps.Web.Authorization;
@@ -29,7 +30,15 @@ builder.Logging.AddConsoleFormatter<RedactedJsonConsoleFormatter, ConsoleFormatt
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddOptions<DemoModeOptions>()
+    .Bind(builder.Configuration.GetSection(DemoModeOptions.SectionName))
+    .Validate(
+        options => options.HasApprovedDatasetConfiguration,
+        "Enabled demo mode requires the exact approved dataset identifier and version.")
+    .ValidateOnStart();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<DemoResetIntentProtector>();
+builder.Services.AddSingleton<DemoResetCompletionProtector>();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 builder.Services.AddScoped<DashboardQueries>();
 builder.Services.AddScoped<BranchProgressQueries>();
@@ -73,10 +82,13 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+_ = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<DemoModeOptions>>().Value;
+
 await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
 {
     FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
     await dbContext.Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<IDemoModeVerifier>().InitializeAsync();
     await scope.ServiceProvider.GetRequiredService<DemoIdentitySeeder>().SeedAsync();
 }
 

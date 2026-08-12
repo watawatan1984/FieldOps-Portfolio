@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 
+using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Web.Models;
 
@@ -12,7 +13,9 @@ namespace FieldOps.Web.Controllers;
 
 [AllowAnonymous]
 [Route("demo-login")]
-public sealed class DemoLoginController(IDataProtectionProvider dataProtectionProvider) : Controller
+public sealed class DemoLoginController(
+    IDataProtectionProvider dataProtectionProvider,
+    IDemoModeVerifier demoModeVerifier) : Controller
 {
     public const string RoleTokenPurpose = "FieldOps.DemoLogin.Role.v2";
     public static readonly TimeSpan RoleTokenLifetime = TimeSpan.FromMinutes(5);
@@ -22,13 +25,21 @@ public sealed class DemoLoginController(IDataProtectionProvider dataProtectionPr
         .ToTimeLimitedDataProtector();
 
     [HttpGet]
-    public IActionResult Index() => View(new[]
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
-        CreateCard(DemoRoleNames.SystemAdministrator, "Alex Morgan", "Full demo administration and audit access."),
-        CreateCard(DemoRoleNames.BranchManager, "Jordan Lee", "Manage one fictional operating branch."),
-        CreateCard(DemoRoleNames.SalesRepresentative, "Casey Rivera", "Manage customers and sales for one fictional branch."),
-        CreateCard(DemoRoleNames.FieldTechnician, "Taylor Kim", "Work with assigned fictional field activities.")
-    });
+        if (!await demoModeVerifier.IsApprovedAsync(cancellationToken))
+        {
+            return NotFound();
+        }
+
+        return View(new[]
+        {
+            CreateCard(DemoRoleNames.SystemAdministrator, "Alex Morgan", "Full demo administration and audit access."),
+            CreateCard(DemoRoleNames.BranchManager, "Jordan Lee", "Manage one fictional operating branch."),
+            CreateCard(DemoRoleNames.SalesRepresentative, "Casey Rivera", "Manage customers and sales for one fictional branch."),
+            CreateCard(DemoRoleNames.FieldTechnician, "Taylor Kim", "Work with assigned fictional field activities.")
+        });
+    }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -37,6 +48,11 @@ public sealed class DemoLoginController(IDataProtectionProvider dataProtectionPr
         [FromServices] UserManager<ApplicationUser> userManager,
         [FromServices] SignInManager<ApplicationUser> signInManager)
     {
+        if (!await demoModeVerifier.IsApprovedAsync(HttpContext.RequestAborted))
+        {
+            return NotFound();
+        }
+
         string role;
         try
         {

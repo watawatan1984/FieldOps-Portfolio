@@ -55,17 +55,6 @@ public sealed class DemoResetExecution
         DateTime startedAtUtc) =>
         new(id, idempotencyKey, actorUserId, correlationId, startedAtUtc);
 
-    public void Restart(string actorUserId, string correlationId, DateTime startedAtUtc)
-    {
-        ActorUserId = actorUserId;
-        CorrelationId = correlationId;
-        StartedAtUtc = startedAtUtc;
-        CompletedAtUtc = null;
-        DurationMilliseconds = null;
-        State = DemoResetState.Running;
-        Outcome = "Running";
-    }
-
     public void Complete(DateTime completedAtUtc, long durationMilliseconds)
     {
         CompletedAtUtc = completedAtUtc;
