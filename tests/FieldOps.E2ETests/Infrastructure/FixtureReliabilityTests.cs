@@ -103,5 +103,62 @@ public sealed class FixtureReliabilityTests(FieldOpsWebFixture fixture)
         Assert.Contains("unexpected-http-403:/administration/reset:fetch", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task MissingExpectedForbiddenDocumentFailsTheRun()
+    {
+        MarkerException exception = await Assert.ThrowsAsync<MarkerException>(() => fixture.RunAsync(
+            nameof(MissingExpectedForbiddenDocumentFailsTheRun),
+            (_, errors) =>
+            {
+                errors.ExpectForbiddenNavigation("/audit");
+                throw new MarkerException("missing-forbidden-marker");
+            },
+            resetDatabase: false));
+
+        Assert.Equal("missing-forbidden-marker", exception.Message);
+
+        Xunit.Sdk.XunitException browserError = await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() => fixture.RunAsync(
+            $"{nameof(MissingExpectedForbiddenDocumentFailsTheRun)}Assert",
+            (_, errors) =>
+            {
+                errors.ExpectForbiddenNavigation("/audit");
+                return Task.CompletedTask;
+            },
+            resetDatabase: false));
+
+        Assert.Contains("expected-http-403-not-consumed:/audit:matched=0", browserError.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartupRetryUsesOneDeadlineAndStopsAfterThreeAddressInUseExits()
+    {
+        List<int> attempts = [];
+        FieldOpsStartupRetryPolicy retryPolicy = new(TimeSpan.FromMinutes(1));
+
+        int readyAttempt = await retryPolicy.RunAsync(async (attempt, token) =>
+        {
+            attempts.Add(attempt);
+            Assert.False(token.IsCancellationRequested);
+            await Task.Yield();
+            return attempt < 3
+                ? FieldOpsStartupAttempt.AddressInUseExit
+                : FieldOpsStartupAttempt.Ready;
+        });
+
+        Assert.Equal(3, readyAttempt);
+        Assert.Equal([1, 2, 3], attempts);
+
+        List<int> exhaustedAttempts = [];
+        InvalidOperationException exhausted = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            retryPolicy.RunAsync(attempt =>
+            {
+                exhaustedAttempts.Add(attempt);
+                return Task.FromResult(FieldOpsStartupAttempt.AddressInUseExit);
+            }));
+
+        Assert.Equal([1, 2, 3], exhaustedAttempts);
+        Assert.Contains("three startup attempts", exhausted.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class MarkerException(string message) : Exception(message);
 }

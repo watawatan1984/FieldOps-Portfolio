@@ -316,8 +316,8 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
 
     private async Task StartApplicationWithRetryAsync()
     {
-        using CancellationTokenSource deadline = new(StartupDeadline);
-        for (int attempt = 1; attempt <= 3; attempt++)
+        FieldOpsStartupRetryPolicy retryPolicy = new(StartupDeadline);
+        _ = await retryPolicy.RunAsync(async (_, token) =>
         {
             lock (_applicationOutput)
             {
@@ -329,18 +329,16 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
             StartApplication(port);
             try
             {
-                await WaitForReadyAsync(deadline.Token);
-                return;
+                await WaitForReadyAsync(token);
+                return FieldOpsStartupAttempt.Ready;
             }
-            catch (ApplicationExitedBeforeReadyException exception) when (
-                attempt < 3 && IsAddressInUse(exception.SafeOutput))
+            catch (ApplicationExitedBeforeReadyException exception)
             {
                 _webProcess?.Dispose();
                 _webProcess = null;
+                return FieldOpsStartupAttempt.Exited(exception.SafeOutput);
             }
-        }
-
-        throw new InvalidOperationException("FieldOps application did not become ready after bounded port retries.");
+        });
     }
 
     private void StartApplication(int port)
@@ -445,10 +443,6 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
         }
     }
 
-    private static bool IsAddressInUse(string output) =>
-        output.Contains("address already in use", StringComparison.OrdinalIgnoreCase) ||
-        output.Contains("Only one usage of each socket address", StringComparison.OrdinalIgnoreCase);
-
     private static string Sanitize(string value) =>
         string.Concat(value.Select(character => char.IsLetterOrDigit(character) ? character : '-'));
 
@@ -456,6 +450,50 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
     {
         public string SafeOutput { get; } = safeOutput;
     }
+}
+
+public sealed class FieldOpsStartupRetryPolicy(TimeSpan startupDeadline, int maxAttempts = 3)
+{
+    public Task<int> RunAsync(Func<int, Task<FieldOpsStartupAttempt>> attemptAsync) =>
+        RunAsync((attempt, _) => attemptAsync(attempt));
+
+    public async Task<int> RunAsync(Func<int, CancellationToken, Task<FieldOpsStartupAttempt>> attemptAsync)
+    {
+        using CancellationTokenSource deadline = new(startupDeadline);
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            FieldOpsStartupAttempt result = await attemptAsync(attempt, deadline.Token);
+            if (result.IsReady)
+            {
+                return attempt;
+            }
+
+            if (attempt < maxAttempts && IsAddressInUse(result.SafeOutput))
+            {
+                continue;
+            }
+
+            break;
+        }
+
+        string attemptDescription = maxAttempts == 3
+            ? "three startup attempts"
+            : $"{maxAttempts} startup attempts";
+        throw new InvalidOperationException($"FieldOps application did not become ready after {attemptDescription}.");
+    }
+
+    private static bool IsAddressInUse(string output) =>
+        output.Contains("address already in use", StringComparison.OrdinalIgnoreCase) ||
+        output.Contains("Only one usage of each socket address", StringComparison.OrdinalIgnoreCase);
+}
+
+public sealed record FieldOpsStartupAttempt(bool IsReady, string SafeOutput)
+{
+    public static FieldOpsStartupAttempt Ready { get; } = new(true, string.Empty);
+
+    public static FieldOpsStartupAttempt AddressInUseExit { get; } = Exited("address already in use");
+
+    public static FieldOpsStartupAttempt Exited(string safeOutput) => new(false, safeOutput);
 }
 
 public sealed class FailureArtifactHooks
