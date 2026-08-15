@@ -9,6 +9,7 @@ using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 using FieldOps.Web.Authorization;
+using FieldOps.Web.Controllers;
 using FieldOps.Web.Logging;
 using FieldOps.Web.Middleware;
 using FieldOps.Web.Services;
@@ -29,8 +30,18 @@ builder.Logging.AddConsole(options => options.FormatterName = RedactedJsonConsol
 builder.Logging.AddConsoleFormatter<RedactedJsonConsoleFormatter, ConsoleFormatterOptions>(options =>
     options.IncludeScopes = true);
 
+bool mapsLoadTestSurface =
+    builder.Environment.IsDevelopment() ||
+    string.Equals(builder.Environment.EnvironmentName, "LoadTest", StringComparison.Ordinal);
+
 // Add services to the container.
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    if (!mapsLoadTestSurface)
+    {
+        options.Conventions.Add(new SuppressControllerConvention(typeof(LoadTestController)));
+    }
+});
 builder.Services.AddRateLimiter(RateLimitPolicies.Configure);
 builder.Services.AddOptions<TrustedProxyOptions>()
     .Bind(builder.Configuration.GetSection(TrustedProxyOptions.SectionName))
@@ -132,6 +143,20 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+if (!mapsLoadTestSurface)
+{
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments("/__load-test"))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        await next(context);
+    });
+}
+
 app.UseRouting();
 
 app.UseAuthentication();
@@ -180,3 +205,14 @@ app.MapControllerRoute(
 app.Run();
 
 public partial class Program;
+
+internal sealed class SuppressControllerConvention(Type controllerType) : Microsoft.AspNetCore.Mvc.ApplicationModels.IControllerModelConvention
+{
+    public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ControllerModel controller)
+    {
+        if (controller.ControllerType.AsType() == controllerType)
+        {
+            controller.Actions.Clear();
+        }
+    }
+}
