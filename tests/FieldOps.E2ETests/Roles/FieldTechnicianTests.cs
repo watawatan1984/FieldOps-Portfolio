@@ -21,7 +21,8 @@ public sealed class FieldTechnicianTests(FieldOpsWebFixture fixture)
                 "SELECT \"Status\" FROM \"WorkOrders\" WHERE \"Id\" = '30000000-0000-4000-8000-000000000002'"));
             Assert.Equal(2, await fixture.QueryScalarAsync<int>(
                 "SELECT count(*) FROM \"AuditEntries\" WHERE \"AggregateId\" = '30000000-0000-4000-8000-000000000002' AND \"Action\" = 'WorkEventAdded'"));
-            errors.ExpectForbiddenNavigation();
+            errors.ExpectForbiddenNavigation(
+                "/parties/10000000-0000-4000-8000-000000000002/edit?branchId=00000000-0000-4000-8000-000000000002");
             Assert.Equal(403, (await page.GotoAsync(
                 "/parties/10000000-0000-4000-8000-000000000002/edit?branchId=00000000-0000-4000-8000-000000000002"))!.Status);
         });

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.ExceptionServices;
 using System.Text;
 
 using FieldOps.Features.Administration;
@@ -27,6 +28,8 @@ public sealed class FieldOpsWebCollection : ICollectionFixture<FieldOpsWebFixtur
 public sealed class FieldOpsWebFixture : IAsyncLifetime
 {
     private static readonly TimeSpan StartupDeadline = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan ArtifactDeadline = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan CleanupDeadline = TimeSpan.FromSeconds(10);
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("fieldops_e2e")
         .WithUsername("postgres")
@@ -35,6 +38,7 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
     private readonly StringBuilder _applicationOutput = new();
     private IPlaywright? _playwright;
     private Process? _webProcess;
+    private int _disposed;
 
     public string BaseUrl { get; private set; } = string.Empty;
 
@@ -49,11 +53,9 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         Directory.CreateDirectory(ArtifactRoot);
+        ClearLegacyFlatFailureArtifacts();
         await _postgres.StartAsync();
-        int port = ReserveLoopbackPort();
-        BaseUrl = $"http://127.0.0.1:{port}";
-        StartApplication(port);
-        await WaitForReadyAsync();
+        await StartApplicationWithRetryAsync();
         await ResetDatabaseAsync("fixture-initial-seed");
 
         _playwright = await Playwright.CreateAsync();
@@ -65,37 +67,107 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        if (Browser is not null)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
-            await Browser.DisposeAsync();
+            return;
         }
 
-        _playwright?.Dispose();
-        if (_webProcess is { HasExited: false })
-        {
-            _webProcess.Kill(entireProcessTree: true);
-            await _webProcess.WaitForExitAsync();
-        }
+        BoundedCleanupRunner cleanup = new(CleanupDeadline);
+        IReadOnlyList<string> diagnostics = await cleanup.RunAsync(
+        [
+            new("browser", async token =>
+            {
+                if (Browser is not null)
+                {
+                    await Browser.DisposeAsync().AsTask().WaitAsync(token);
+                }
+            }),
+            new("playwright", token => Task.Run(() => _playwright?.Dispose(), token)),
+            new("application-process", async token =>
+            {
+                if (_webProcess is null)
+                {
+                    return;
+                }
 
-        _webProcess?.Dispose();
-        await File.WriteAllTextAsync(
-            Path.Combine(ArtifactRoot, "application.log"),
-            _applicationOutput.ToString());
-        await _postgres.DisposeAsync();
+                if (!_webProcess.HasExited)
+                {
+                    _webProcess.Kill(entireProcessTree: true);
+                    await _webProcess.WaitForExitAsync(token);
+                }
+
+                _webProcess.Dispose();
+            }),
+            new("application-log", async token =>
+            {
+                string output;
+                lock (_applicationOutput)
+                {
+                    output = _applicationOutput.ToString();
+                }
+
+                await File.WriteAllTextAsync(
+                    Path.Combine(ArtifactRoot, "application.log"),
+                    output,
+                    token);
+            }),
+            new("npgsql-pool", token => Task.Run(() =>
+            {
+                using NpgsqlConnection ownedPool = new(ConnectionString);
+                NpgsqlConnection.ClearPool(ownedPool);
+            }, token)),
+            new("postgres-container", token => _postgres.DisposeAsync().AsTask().WaitAsync(token), TimeSpan.FromSeconds(30))
+        ]);
+
+        if (diagnostics.Count > 0)
+        {
+            try
+            {
+                using CancellationTokenSource deadline = new(ArtifactDeadline);
+                await File.WriteAllLinesAsync(
+                    Path.Combine(ArtifactRoot, "cleanup-diagnostics.log"),
+                    diagnostics,
+                    deadline.Token);
+            }
+            catch
+            {
+            }
+        }
+        else
+        {
+            try
+            {
+                string staleDiagnostics = Path.Combine(ArtifactRoot, "cleanup-diagnostics.log");
+                if (File.Exists(staleDiagnostics))
+                {
+                    File.Delete(staleDiagnostics);
+                }
+            }
+            catch
+            {
+            }
+        }
     }
 
     public async Task RunAsync(
         string testName,
         Func<IPage, BrowserErrorCollector, Task> test,
         ViewportSize? viewport = null,
-        bool resetDatabase = true)
+        bool resetDatabase = true,
+        FailureArtifactHooks? failureArtifactHooks = null)
     {
         if (resetDatabase)
         {
             await ResetDatabaseAsync($"e2e-{Guid.NewGuid():N}");
         }
 
-        string artifactName = Sanitize(testName);
+        string runDirectory = Path.Combine(
+            ArtifactRoot,
+            "failures",
+            Sanitize(testName),
+            $"{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(runDirectory);
+
         await using IBrowserContext context = await Browser.NewContextAsync(new BrowserNewContextOptions
         {
             BaseURL = BaseUrl,
@@ -115,21 +187,28 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
         {
             await test(page, errors);
             errors.AssertEmpty();
-            await context.Tracing.StopAsync();
         }
-        catch
+        catch (Exception original)
         {
-            await page.ScreenshotAsync(new PageScreenshotOptions
-            {
-                Path = Path.Combine(ArtifactRoot, $"{artifactName}.png"),
-                FullPage = true
-            });
-            await context.Tracing.StopAsync(new TracingStopOptions
-            {
-                Path = Path.Combine(ArtifactRoot, $"{artifactName}.zip")
-            });
+            await CaptureFailureArtifactsAsync(
+                page,
+                context,
+                runDirectory,
+                failureArtifactHooks ?? FailureArtifactHooks.Default);
+            ExceptionDispatchInfo.Capture(original).Throw();
             throw;
         }
+
+        await context.Tracing.StopAsync().WaitAsync(ArtifactDeadline);
+        Directory.Delete(runDirectory, recursive: true);
+    }
+
+    public IReadOnlyList<string> GetFailureRunDirectories(string testName)
+    {
+        string testDirectory = Path.Combine(ArtifactRoot, "failures", Sanitize(testName));
+        return Directory.Exists(testDirectory)
+            ? Directory.GetDirectories(testDirectory).OrderBy(path => path, StringComparer.Ordinal).ToArray()
+            : [];
     }
 
     public async Task ResetDatabaseAsync(string idempotencyKey)
@@ -163,6 +242,107 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
         return (T)Convert.ChangeType(result!, typeof(T), System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    public async Task<T> QuerySingleAsync<T>(string sql, Func<NpgsqlDataReader, T> projector)
+    {
+        await using NpgsqlConnection connection = new(ConnectionString);
+        await connection.OpenAsync();
+        await using NpgsqlCommand command = new(sql, connection);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync(), "The E2E database query did not return a row.");
+        T result = projector(reader);
+        Assert.False(await reader.ReadAsync(), "The E2E database query returned more than one row.");
+        return result;
+    }
+
+    private async Task CaptureFailureArtifactsAsync(
+        IPage page,
+        IBrowserContext context,
+        string runDirectory,
+        FailureArtifactHooks hooks)
+    {
+        ConcurrentQueue<string> diagnostics = [];
+        if (page.IsClosed)
+        {
+            diagnostics.Enqueue("screenshot:page-closed");
+        }
+        else
+        {
+            await CaptureArtifactStageAsync(
+                "screenshot",
+                token => hooks.ScreenshotAsync(page, Path.Combine(runDirectory, "screenshot.png"), token),
+                diagnostics);
+        }
+
+        await CaptureArtifactStageAsync(
+            "trace",
+            token => hooks.TraceAsync(context, Path.Combine(runDirectory, "trace.zip"), token),
+            diagnostics);
+
+        if (!diagnostics.IsEmpty)
+        {
+            try
+            {
+                using CancellationTokenSource deadline = new(ArtifactDeadline);
+                await File.WriteAllLinesAsync(
+                    Path.Combine(runDirectory, "artifact-diagnostics.txt"),
+                    diagnostics,
+                    deadline.Token);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static async Task CaptureArtifactStageAsync(
+        string stage,
+        Func<CancellationToken, Task> capture,
+        ConcurrentQueue<string> diagnostics)
+    {
+        using CancellationTokenSource deadline = new(ArtifactDeadline);
+        try
+        {
+            await capture(deadline.Token).WaitAsync(deadline.Token);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            diagnostics.Enqueue($"{stage}:timeout");
+        }
+        catch (Exception exception)
+        {
+            diagnostics.Enqueue($"{stage}:{exception.GetType().Name}");
+        }
+    }
+
+    private async Task StartApplicationWithRetryAsync()
+    {
+        using CancellationTokenSource deadline = new(StartupDeadline);
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            lock (_applicationOutput)
+            {
+                _applicationOutput.Clear();
+            }
+
+            int port = ReserveLoopbackPort();
+            BaseUrl = $"http://127.0.0.1:{port}";
+            StartApplication(port);
+            try
+            {
+                await WaitForReadyAsync(deadline.Token);
+                return;
+            }
+            catch (ApplicationExitedBeforeReadyException exception) when (
+                attempt < 3 && IsAddressInUse(exception.SafeOutput))
+            {
+                _webProcess?.Dispose();
+                _webProcess = null;
+            }
+        }
+
+        throw new InvalidOperationException("FieldOps application did not become ready after bounded port retries.");
+    }
+
     private void StartApplication(int port)
     {
         string repositoryRoot = Path.GetFullPath(Path.Combine(
@@ -191,22 +371,27 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
         _webProcess.BeginErrorReadLine();
     }
 
-    private async Task WaitForReadyAsync()
+    private async Task WaitForReadyAsync(CancellationToken cancellationToken)
     {
-        using CancellationTokenSource deadline = new(StartupDeadline);
         using HttpClient client = new() { BaseAddress = new Uri(BaseUrl) };
         while (true)
         {
-            deadline.Token.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
             if (_webProcess?.HasExited == true)
             {
-                throw new InvalidOperationException(
-                    $"FieldOps web process exited with code {_webProcess.ExitCode}. Output: {_applicationOutput}");
+                await _webProcess.WaitForExitAsync(cancellationToken);
+                string output;
+                lock (_applicationOutput)
+                {
+                    output = _applicationOutput.ToString();
+                }
+
+                throw new ApplicationExitedBeforeReadyException(output);
             }
 
             try
             {
-                using HttpResponseMessage response = await client.GetAsync("/health/ready", deadline.Token);
+                using HttpResponseMessage response = await client.GetAsync("/health/ready", cancellationToken);
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
                     return;
@@ -216,18 +401,20 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
             {
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50), deadline.Token);
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
         }
     }
 
     private void CaptureApplicationOutput(object sender, DataReceivedEventArgs args)
     {
-        if (args.Data is not null)
+        if (args.Data is null)
         {
-            lock (_applicationOutput)
-            {
-                _applicationOutput.AppendLine(args.Data);
-            }
+            return;
+        }
+
+        lock (_applicationOutput)
+        {
+            _applicationOutput.AppendLine(args.Data);
         }
     }
 
@@ -240,18 +427,106 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
         return port;
     }
 
+    private void ClearLegacyFlatFailureArtifacts()
+    {
+        string resolvedRoot = Path.GetFullPath(ArtifactRoot);
+        foreach (string extension in new[] { "*.png", "*.zip" })
+        {
+            foreach (string path in Directory.GetFiles(resolvedRoot, extension, SearchOption.TopDirectoryOnly))
+            {
+                string resolvedPath = Path.GetFullPath(path);
+                if (!resolvedPath.StartsWith(resolvedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("A legacy artifact resolved outside the E2E artifact root.");
+                }
+
+                File.Delete(resolvedPath);
+            }
+        }
+    }
+
+    private static bool IsAddressInUse(string output) =>
+        output.Contains("address already in use", StringComparison.OrdinalIgnoreCase) ||
+        output.Contains("Only one usage of each socket address", StringComparison.OrdinalIgnoreCase);
+
     private static string Sanitize(string value) =>
         string.Concat(value.Select(character => char.IsLetterOrDigit(character) ? character : '-'));
+
+    private sealed class ApplicationExitedBeforeReadyException(string safeOutput) : Exception
+    {
+        public string SafeOutput { get; } = safeOutput;
+    }
+}
+
+public sealed class FailureArtifactHooks
+{
+    public FailureArtifactHooks(
+        Func<IPage, string, CancellationToken, Task>? screenshotAsync = null,
+        Func<IBrowserContext, string, CancellationToken, Task>? traceAsync = null)
+    {
+        ScreenshotAsync = screenshotAsync ?? CaptureScreenshotAsync;
+        TraceAsync = traceAsync ?? CaptureTraceAsync;
+    }
+
+    public static FailureArtifactHooks Default { get; } = new();
+
+    public Func<IPage, string, CancellationToken, Task> ScreenshotAsync { get; }
+
+    public Func<IBrowserContext, string, CancellationToken, Task> TraceAsync { get; }
+
+    private static Task CaptureScreenshotAsync(IPage page, string path, CancellationToken _) =>
+        page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = path,
+            FullPage = true
+        });
+
+    private static Task CaptureTraceAsync(IBrowserContext context, string path, CancellationToken _) =>
+        context.Tracing.StopAsync(new TracingStopOptions { Path = path });
+}
+
+public sealed record CleanupStage(
+    string Name,
+    Func<CancellationToken, Task> Action,
+    TimeSpan? Deadline = null);
+
+public sealed class BoundedCleanupRunner(TimeSpan defaultDeadline)
+{
+    public async Task<IReadOnlyList<string>> RunAsync(IEnumerable<CleanupStage> stages)
+    {
+        List<string> diagnostics = [];
+        foreach (CleanupStage stage in stages)
+        {
+            using CancellationTokenSource deadline = new(stage.Deadline ?? defaultDeadline);
+            try
+            {
+                await stage.Action(deadline.Token).WaitAsync(deadline.Token);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                diagnostics.Add($"{stage.Name}:timeout");
+            }
+            catch (Exception exception)
+            {
+                diagnostics.Add($"{stage.Name}:{exception.GetType().Name}");
+            }
+        }
+
+        return diagnostics;
+    }
 }
 
 public sealed class BrowserErrorCollector
 {
     private readonly ConcurrentQueue<string> _errors = [];
-    private int _expectedForbiddenConsoleErrors;
+    private readonly object _expectationLock = new();
+    private ForbiddenExpectation? _forbiddenExpectation;
+    private int _genericForbiddenConsoleErrors;
 
     public BrowserErrorCollector(IPage page)
     {
         page.PageError += (_, error) => _errors.Enqueue($"pageerror: {error}");
+        page.Response += (_, response) => CaptureForbiddenResponse(response);
         page.Console += (_, message) =>
         {
             if (!string.Equals(message.Type, "error", StringComparison.OrdinalIgnoreCase))
@@ -259,10 +534,12 @@ public sealed class BrowserErrorCollector
                 return;
             }
 
-            if (message.Text.Contains("the server responded with a status of 403", StringComparison.OrdinalIgnoreCase) &&
-                Interlocked.CompareExchange(ref _expectedForbiddenConsoleErrors, 0, 0) > 0)
+            if (string.Equals(
+                message.Text,
+                "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+                StringComparison.Ordinal))
             {
-                Interlocked.Decrement(ref _expectedForbiddenConsoleErrors);
+                Interlocked.Increment(ref _genericForbiddenConsoleErrors);
             }
             else
             {
@@ -271,9 +548,80 @@ public sealed class BrowserErrorCollector
         };
     }
 
-    public void ExpectForbiddenNavigation() => Interlocked.Increment(ref _expectedForbiddenConsoleErrors);
+    public void ExpectForbiddenNavigation(string pathAndQuery)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pathAndQuery);
+        if (!pathAndQuery.StartsWith("/", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The expected forbidden navigation must be an absolute application path.", nameof(pathAndQuery));
+        }
 
-    public void AssertEmpty() => Assert.True(
-        _errors.Count == 0,
-        $"Unexpected browser errors: {string.Join(" | ", _errors)}");
+        lock (_expectationLock)
+        {
+            if (_forbiddenExpectation is not null)
+            {
+                throw new InvalidOperationException("Only one forbidden navigation expectation may be active.");
+            }
+
+            _forbiddenExpectation = new ForbiddenExpectation(pathAndQuery);
+        }
+    }
+
+    public void AssertEmpty()
+    {
+        int matched;
+        lock (_expectationLock)
+        {
+            matched = _forbiddenExpectation?.Matched ?? 0;
+            if (_forbiddenExpectation is not null && matched != 1)
+            {
+                _errors.Enqueue($"expected-http-403-not-consumed:{_forbiddenExpectation.PathAndQuery}:matched={matched}");
+            }
+        }
+
+        int forbiddenConsoleErrors = Volatile.Read(ref _genericForbiddenConsoleErrors);
+        if (forbiddenConsoleErrors > matched)
+        {
+            _errors.Enqueue($"unexpected-generic-403-console-errors:{forbiddenConsoleErrors - matched}");
+        }
+
+        Assert.True(
+            _errors.IsEmpty,
+            $"Unexpected browser errors: {string.Join(" | ", _errors)}");
+    }
+
+    private void CaptureForbiddenResponse(IResponse response)
+    {
+        if (response.Status != 403)
+        {
+            return;
+        }
+
+        Uri uri = new(response.Url);
+        string pathAndQuery = uri.PathAndQuery;
+        string correlation = response.Headers
+            .FirstOrDefault(header => string.Equals(header.Key, "x-correlation-id", StringComparison.OrdinalIgnoreCase))
+            .Value ?? string.Empty;
+        string resourceType = response.Request.ResourceType;
+        lock (_expectationLock)
+        {
+            if (_forbiddenExpectation is not null &&
+                string.Equals(resourceType, "document", StringComparison.Ordinal) &&
+                string.Equals(pathAndQuery, _forbiddenExpectation.PathAndQuery, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(correlation))
+            {
+                _forbiddenExpectation.Matched++;
+                return;
+            }
+        }
+
+        _errors.Enqueue($"unexpected-http-403:{pathAndQuery}:{resourceType}");
+    }
+
+    private sealed class ForbiddenExpectation(string pathAndQuery)
+    {
+        public string PathAndQuery { get; } = pathAndQuery;
+
+        public int Matched { get; set; }
+    }
 }

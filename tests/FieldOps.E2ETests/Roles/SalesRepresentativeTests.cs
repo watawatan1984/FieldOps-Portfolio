@@ -23,7 +23,7 @@ public sealed class SalesRepresentativeTests(FieldOpsWebFixture fixture)
             await new SalesPage(page).CreateAndAdvanceAsync();
             Assert.Equal(1, await fixture.QueryScalarAsync<int>(
                 "SELECT count(*) FROM \"SalesOpportunities\" WHERE \"ProposedAmount\" = 765432 AND \"Status\" = 3"));
-            errors.ExpectForbiddenNavigation();
+            errors.ExpectForbiddenNavigation("/audit");
             Assert.Equal(403, (await page.GotoAsync("/audit"))!.Status);
         });
 }

@@ -35,7 +35,7 @@ public sealed class SystemAdministratorTests(FieldOpsWebFixture fixture)
                 "UPDATE \"DemoDatasetMarkers\" SET \"DatasetVersion\" = 'unauthorized-e2e' RETURNING 1"));
             try
             {
-                errors.ExpectForbiddenNavigation();
+                errors.ExpectForbiddenNavigation("/administration/reset");
                 Assert.Equal(403, (await page.GotoAsync("/administration/reset"))!.Status);
             }
             finally
