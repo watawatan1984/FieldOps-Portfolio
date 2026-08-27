@@ -1,0 +1,17 @@
+.git
+.github
+.firecrawl
+.superpowers
+.worktrees
+.vs
+.vscode
+**/bin
+**/obj
+TestResults
+artifacts
+coverage
+docs
+tests
+*.log
+.env
+.env.*

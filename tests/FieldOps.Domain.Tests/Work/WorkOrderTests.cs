@@ -1,8 +1,8 @@
+using System.Reflection;
+
 using FieldOps.Domain.Common;
 using FieldOps.Domain.Entities;
 using FieldOps.Domain.Enums;
-
-using System.Reflection;
 
 namespace FieldOps.Domain.Tests.Work;
 

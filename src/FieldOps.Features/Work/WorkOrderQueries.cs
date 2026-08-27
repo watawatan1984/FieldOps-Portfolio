@@ -1,6 +1,6 @@
-using FieldOps.Features.Abstractions;
-using FieldOps.Domain.Enums;
 using FieldOps.Domain.Entities;
+using FieldOps.Domain.Enums;
+using FieldOps.Features.Abstractions;
 
 using Microsoft.EntityFrameworkCore;
 

@@ -23,6 +23,31 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 
+if (args.Length == 1 && string.Equals(args[0], "--health-check", StringComparison.Ordinal))
+{
+    string port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+    using HttpClient client = new()
+    {
+        Timeout = TimeSpan.FromSeconds(5)
+    };
+
+    try
+    {
+        using HttpResponseMessage response = await client.GetAsync($"http://127.0.0.1:{port}/health/live");
+        Environment.ExitCode = response.IsSuccessStatusCode ? 0 : 1;
+    }
+    catch (HttpRequestException)
+    {
+        Environment.ExitCode = 1;
+    }
+    catch (TaskCanceledException)
+    {
+        Environment.ExitCode = 1;
+    }
+
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
@@ -142,7 +167,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+bool edgeTerminatesTls = builder.Configuration.GetValue<bool>("Hosting:EdgeTerminatesTls");
+if (!edgeTerminatesTls)
+{
+    app.UseHttpsRedirection();
+}
 if (!mapsLoadTestSurface)
 {
     app.Use(async (context, next) =>
