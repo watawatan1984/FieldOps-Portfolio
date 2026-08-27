@@ -1,4 +1,4 @@
-name: Release
+name: Release verification
 
 on:
   workflow_run:
@@ -14,49 +14,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  verify-public:
     if: >-
       ${{
         (github.event_name == 'workflow_dispatch' ||
          (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')) &&
-        vars.KOYEB_APP_NAME != '' &&
-        vars.KOYEB_SERVICE_NAME != '' &&
-        vars.KOYEB_PUBLIC_URL != ''
+        vars.RENDER_PUBLIC_URL != ''
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
-      KOYEB_APP_NAME: ${{ vars.KOYEB_APP_NAME }}
-      KOYEB_SERVICE_NAME: ${{ vars.KOYEB_SERVICE_NAME }}
-      KOYEB_PUBLIC_URL: ${{ vars.KOYEB_PUBLIC_URL }}
+      RENDER_PUBLIC_URL: ${{ vars.RENDER_PUBLIC_URL }}
     steps:
       - name: Check out deployed source
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Require Koyeb credentials
-        shell: bash
-        run: test -n "$KOYEB_TOKEN"
-
-      - name: Install pinned Koyeb CLI
-        shell: bash
-        run: |
-          curl --fail --show-error --silent --location \
-            --output koyeb-cli.tar.gz \
-            https://github.com/koyeb/koyeb-cli/releases/download/v5.10.2/koyeb-cli_5.10.2_linux_amd64.tar.gz
-          curl --fail --show-error --silent --location \
-            --output checksums.txt \
-            https://github.com/koyeb/koyeb-cli/releases/download/v5.10.2/checksums.txt
-          grep 'koyeb-cli_5.10.2_linux_amd64.tar.gz' checksums.txt | sha256sum --check
-          tar -xzf koyeb-cli.tar.gz
-          sudo install -m 0755 koyeb /usr/local/bin/koyeb
-          koyeb version
-
-      - name: Redeploy the green main revision
-        run: koyeb services redeploy "$KOYEB_SERVICE_NAME" --app "$KOYEB_APP_NAME" --wait --wait-timeout 12m
+      - name: Wait for the green Render deployment
+        shell: pwsh
+        run: ./scripts/wait-for-ready.ps1 -BaseUrl $env:RENDER_PUBLIC_URL -TimeoutSeconds 600
 
       - name: Verify public health and read-only role journey
         shell: pwsh
-        run: ./scripts/test-public-smoke.ps1 -BaseUrl $env:KOYEB_PUBLIC_URL -Role 'Field Technician'
+        run: ./scripts/test-public-smoke.ps1 -BaseUrl $env:RENDER_PUBLIC_URL -Role 'Field Technician'

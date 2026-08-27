@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+
+services:
+  - type: web
+    name: fieldops-portfolio
+    runtime: docker
+    plan: free
+    region: frankfurt
+    repo: https://github.com/watawatan1984/FieldOps-Portfolio
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: checksPass
+    healthCheckPath: /health/ready
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: PORT
+        value: "8080"
+      - key: ASPNETCORE_URLS
+        value: http://+:8080
+      - key: Hosting__EdgeTerminatesTls
+        value: "true"
+      - key: DemoMode__Enabled
+        value: "true"
+      - key: DemoMode__DatasetIdentifier
+        value: fieldops-portal-fictional-demo
+      - key: DemoMode__DatasetVersion
+        value: "1"
+      - key: ConnectionStrings__FieldOps
+        sync: false
