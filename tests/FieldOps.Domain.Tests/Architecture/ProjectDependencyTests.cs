@@ -32,7 +32,11 @@ public sealed class ProjectDependencyTests
     private static string[] ProjectReferences(string root, params string[] projectPath)
     {
         return References(root, projectPath, "ProjectReference")
-            .Select(reference => Path.GetFileName(reference) ?? throw new InvalidOperationException("Project reference is missing a file name."))
+            .Select(reference => Path.GetFileName(
+                reference
+                    .Replace('\\', Path.DirectorySeparatorChar)
+                    .Replace('/', Path.DirectorySeparatorChar))
+                ?? throw new InvalidOperationException("Project reference is missing a file name."))
             .ToArray();
     }
 
