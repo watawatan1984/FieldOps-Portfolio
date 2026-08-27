@@ -13,7 +13,7 @@ $readme = Get-Content -LiteralPath $readmePath -Raw
 $requiredPatterns = [ordered]@{
     "fictional reconstruction disclosure" = "架空の再構成|fictional reconstruction"
     "source repository URL" = "github\.com/watawatan1984/FieldOps-Portfolio"
-    "live demo status" = "Live demo:.*未デプロイ"
+    "verified live demo URL" = "Live demo:\s*\[fieldops-portfolio\.onrender\.com\]\(https://fieldops-portfolio\.onrender\.com\)"
     "four roles" = "System Administrator[\s\S]*Branch Manager[\s\S]*Sales Representative[\s\S]*Field Technician"
     "one-click login" = "ワンクリックログイン"
     "architecture overview" = "## アーキテクチャとドメイン"
@@ -51,12 +51,12 @@ if (Test-Path -LiteralPath $screenshotDirectory -PathType Container) {
 }
 
 if ($screenshotFiles.Count -eq 0) {
-    if ($readme -notmatch "スクリーンショット収集はTask 17の未完了項目です" -or $readme -notmatch "現在は未掲載") {
+    if ($readme -notmatch "スクリーンショットは現在未掲載") {
         throw "README must state that screenshots are pending while no approved screenshot files exist."
     }
 }
 else {
-    if ($readme -match "スクリーンショット収集はTask 17の未完了項目です|現在は未掲載") {
+    if ($readme -match "スクリーンショットは現在未掲載") {
         throw "README still reports screenshots as pending after approved files were added."
     }
 

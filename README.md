@@ -6,7 +6,8 @@
 > このリポジトリは、業務システムの設計・実装・検証方法を公開するためにゼロから作成した**架空の再構成（fictional reconstruction）**です。実在する勤務先・顧客・本番システムのソースコード、データ、URL、認証情報は含みません。
 
 - Source: [github.com/watawatan1984/FieldOps-Portfolio](https://github.com/watawatan1984/FieldOps-Portfolio)
-- Live demo: **未デプロイ**（公開URLは実環境の検証後に追記します）
+- Live demo: [fieldops-portfolio.onrender.com](https://fieldops-portfolio.onrender.com)
+- Hosting: Render Free（Frankfurt）+ Neon Free PostgreSQL（AWS EU Central 1）
 - Latest published source: [`main`](https://github.com/watawatan1984/FieldOps-Portfolio/tree/main)
 
 ## 主な機能
@@ -23,12 +24,12 @@
 
 デモモードではパスワードをブラウザへ渡さず、署名されたロール選択によるワンクリックログインを使用します。この仕組みは架空データ専用で、通常の本番認証として利用する設計ではありません。
 
-| ロール | 主な操作範囲 |
-|---|---|
-| System Administrator | 全支店の参照、監査、デモ初期化 |
-| Branch Manager | 自支店の顧客・営業・作業管理 |
-| Sales Representative | 自支店の営業・顧客業務 |
-| Field Technician | 自分に割り当てられた作業と作業イベント |
+| ロール               | 主な操作範囲                           |
+| -------------------- | -------------------------------------- |
+| System Administrator | 全支店の参照、監査、デモ初期化         |
+| Branch Manager       | 自支店の顧客・営業・作業管理           |
+| Sales Representative | 自支店の営業・顧客業務                 |
+| Field Technician     | 自分に割り当てられた作業と作業イベント |
 
 サーバー側の認可は画面表示だけに依存せず、支店・所有者・担当者をデータベースから再取得して判定します。
 
@@ -96,18 +97,19 @@ dotnet run --project src/FieldOps.Web --launch-profile http
 
 ## テストと検証結果
 
-2026-08-15、Windows / .NET 10 / PostgreSQL 17 / Chromiumで次を確認しました。Domain・Integration・E2Eの全体結果はソースコミット `03918af` で再確認しています。負荷試験はTask 15の変更をコミットする前に、ベースコミット `82c098b` の作業ツリー上で測定し、その負荷試験コードと結果を `03918af` としてコミットしました。
+2026-08-27、Windows / Linux CI / .NET 10 / PostgreSQL 17 / Chromiumで次を再確認しました。公開前の全CIゲートはソースコミット [`1c3ea75`](https://github.com/watawatan1984/FieldOps-Portfolio/commit/1c3ea75bd9a2df7000d8fa566c791a86a1779edf) で成功しています。負荷試験は隔離されたローカル環境で測定し、公開環境には実行していません。
 
-| 種別 | 結果 | 主な範囲 |
-|---|---:|---|
-| Domain tests | 62/62 | 不変条件、状態遷移、終端規則 |
-| Integration tests | 188/188 | 実PostgreSQL、認可、同時実行、障害、安全な初期化 |
-| Playwright E2E | 16/16 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤 |
-| Full solution | 266/266 | Release構成、失敗・スキップ0 |
-| Baseline load | PASS | 20 VUs / 10分、11,843 requests、p95 31.90 ms、HTTP失敗0 |
-| Stress load | PASS | 100 VUs / 5分、29,548 requests、p95 39.63 ms、HTTP失敗0 |
+| 種別              |    結果 | 主な範囲                                                |
+| ----------------- | ------: | ------------------------------------------------------- |
+| Domain tests      |   62/62 | 不変条件、状態遷移、終端規則                            |
+| Integration tests | 188/188 | 実PostgreSQL、認可、同時実行、障害、安全な初期化        |
+| Playwright E2E    |   16/16 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤      |
+| Full solution     | 266/266 | Release構成、失敗・スキップ0                            |
+| Baseline load     |    PASS | 20 VUs / 10分、11,843 requests、p95 31.90 ms、HTTP失敗0 |
+| Stress load       |    PASS | 100 VUs / 5分、29,548 requests、p95 39.63 ms、HTTP失敗0 |
 
 - [負荷試験の検証結果](docs/evidence/load-test-results.md)
+- [公開デプロイ検証結果](docs/evidence/public-deployment-verification.md)
 - 負荷試験は隔離されたローカルDocker環境だけで実行しています。
 - 数値はこの環境での再現可能な測定結果であり、無料の公開インスタンスが100同時ユーザーを処理できるという主張ではありません。
 
@@ -119,18 +121,18 @@ dotnet test FieldOps.sln --configuration Release --no-build
 
 ## Screenshots
 
-スクリーンショット収集はTask 17の未完了項目です。公開デモの最終確認時に検証済み画像を追加します。現在は未掲載であり、画像が存在するような表示はしていません。
+スクリーンショットは現在未掲載です。画面と権限制御は上記Live demoで直接確認できます。
 
 ## 公開環境の制約
 
-- Live demoはまだデプロイしていません。
-- 将来の無料ホスティングではコールドスタートやscale-to-zeroが発生する可能性があります。
+- Render Freeは15分間アクセスがないと停止し、次回アクセス時にコールドスタートが発生します。起動まで50秒以上かかる場合があります。
+- Neon Freeも未使用時にscale-to-zeroするため、最初のDB接続が遅くなる場合があります。
 - 公開デモに対してbaseline/stress負荷試験は実行しません。
 - デモログインとデモ初期化は、承認済みの架空データセットでのみ有効にします。
 
 ## English summary
 
-FieldOps Portal is a fictional, production-shaped ASP.NET Core MVC portfolio application for multi-branch customer, sales, and field-work operations. It demonstrates PostgreSQL persistence, resource-based authorization, optimistic concurrency, append-only history, structured diagnostics, a guarded demo reset, four role-specific browser journeys, and reproducible local load-test evidence. It contains no employer source code or real customer data. The public live demo has not been deployed yet.
+FieldOps Portal is a fictional, production-shaped ASP.NET Core MVC portfolio application for multi-branch customer, sales, and field-work operations. It demonstrates PostgreSQL persistence, resource-based authorization, optimistic concurrency, append-only history, structured diagnostics, a guarded demo reset, four role-specific browser journeys, and reproducible local load-test evidence. It contains no employer source code or real customer data. The public live demo runs on Render Free with Neon Free PostgreSQL.
 
 ## License
 
