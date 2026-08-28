@@ -59,7 +59,7 @@ public sealed class AccessibilitySmokeTests(FieldOpsWebFixture fixture)
         {
             IResponse response = await page.GotoAsync("/demo-login") ?? throw new InvalidOperationException("Login response missing.");
             Assert.Equal(ExpectedCsp, response.Headers["content-security-policy"]);
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Choose a demo role", Exact = true }))
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "担当する仕事を選んでください", Exact = true }))
                 .ToBeVisibleAsync();
             IReadOnlyList<string> unlabeledControls = await page.Locator("button:not([aria-label]), input:not([type=hidden]), select, textarea")
                 .EvaluateAllAsync<string[]>(

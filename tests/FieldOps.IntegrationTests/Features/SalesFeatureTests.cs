@@ -902,7 +902,7 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         string token = Regex.Match(html, "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
         string roleToken = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(role)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
         Assert.NotEmpty(token);
         Assert.NotEmpty(roleToken);

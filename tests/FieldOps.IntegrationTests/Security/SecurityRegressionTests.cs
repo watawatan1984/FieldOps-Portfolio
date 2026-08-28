@@ -62,7 +62,7 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
         string antiforgeryToken = GetInputValue(html, "__RequestVerificationToken");
         string roleToken = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(DemoRoleNames.SystemAdministrator)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(DemoRoleNames.SystemAdministrator)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
 
         using HttpResponseMessage login = await client.PostAsync(
@@ -391,7 +391,7 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
             {
                 ["roleToken"] = Regex.Match(
                     html,
-                    $"<h2 class=\"h5\">{Regex.Escape(DemoRoleNames.SystemAdministrator)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+                    $"data-role=\"{Regex.Escape(DemoRoleNames.SystemAdministrator)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
                     RegexOptions.Singleline).Groups[1].Value,
                 ["__RequestVerificationToken"] = GetInputValue(html, "__RequestVerificationToken")
             }));
@@ -596,7 +596,7 @@ public sealed class SecurityRegressionTests(PostgresFixture postgres)
             {
                 ["roleToken"] = Regex.Match(
                     html,
-                    $"<h2 class=\"h5\">{Regex.Escape(role)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+                    $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
                     RegexOptions.Singleline).Groups[1].Value,
                 ["__RequestVerificationToken"] = GetInputValue(html, "__RequestVerificationToken")
             }));

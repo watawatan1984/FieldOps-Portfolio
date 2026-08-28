@@ -77,10 +77,13 @@ public sealed class DemoLoginTests(PostgresFixture postgres)
         string html = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("System Administrator", html, StringComparison.Ordinal);
-        Assert.Contains("Branch Manager", html, StringComparison.Ordinal);
-        Assert.Contains("Sales Representative", html, StringComparison.Ordinal);
-        Assert.Contains("Field Technician", html, StringComparison.Ordinal);
+        Assert.Contains("担当する仕事を選んでください", html, StringComparison.Ordinal);
+        Assert.Contains("システム管理者", html, StringComparison.Ordinal);
+        Assert.Contains("支店管理者", html, StringComparison.Ordinal);
+        Assert.Contains("営業担当者", html, StringComparison.Ordinal);
+        Assert.Contains("現場担当者", html, StringComparison.Ordinal);
+        Assert.Contains("架空のデモデータ", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Continue as", html, StringComparison.Ordinal);
         Assert.DoesNotContain("type=\"password\"", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -229,7 +232,7 @@ public sealed class DemoLoginTests(PostgresFixture postgres)
     {
         string token = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(role)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
         Assert.NotEmpty(token);
         return token;

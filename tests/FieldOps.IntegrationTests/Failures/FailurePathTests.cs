@@ -233,7 +233,7 @@ public sealed class FailurePathTests(PostgresFixture postgres)
         string html = await client.GetStringAsync("/demo-login");
         string roleToken = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(DemoRoleNames.SystemAdministrator)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(DemoRoleNames.SystemAdministrator)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
         using HttpResponseMessage response = await client.PostAsync(
             "/demo-login",

@@ -428,6 +428,24 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
         Assert.True(await dbContext.Set<FieldOps.Domain.Entities.WorkEvent>().AnyAsync(item => item.Id == DemoDataManifest.WorkEventId(1)));
         Assert.True(await dbContext.Users.AnyAsync(user =>
             user.Id == DemoDataManifest.UsersByRole[DemoRoleNames.SystemAdministrator].Id));
+        Assert.Equal(
+            "中央サービス支店",
+            await dbContext.Branches
+                .Where(branch => branch.Id == DemoDataManifest.Branches[0].Id)
+                .Select(branch => branch.Name)
+                .SingleAsync());
+        Assert.Equal(
+            ["佐藤 健一", "鈴木 美咲", "高橋 翔太", "田中 葵"],
+            await dbContext.Users
+                .OrderBy(user => user.Id)
+                .Select(user => user.DisplayName)
+                .ToArrayAsync());
+        Assert.Equal(
+            "架空設備サービス 01",
+            await dbContext.Parties
+                .Where(party => party.Id == DemoDataManifest.PartyId(1))
+                .Select(party => party.OrganizationName)
+                .SingleAsync());
     }
 
     [Fact]
@@ -1197,7 +1215,7 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
         string requestToken = RequestVerificationTokenRegex().Match(html).Groups[1].Value;
         string roleToken = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(role)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
         Assert.NotEmpty(requestToken);
         Assert.NotEmpty(roleToken);

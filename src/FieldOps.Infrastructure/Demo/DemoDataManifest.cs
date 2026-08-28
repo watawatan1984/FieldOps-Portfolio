@@ -17,11 +17,11 @@ public static class DemoDataManifest
 
     public static IReadOnlyList<DemoBranch> Branches { get; } =
     [
-        new(Guid.Parse("00000000-0000-4000-8000-000000000001"), "Fictional Central Service Branch"),
-        new(Guid.Parse("00000000-0000-4000-8000-000000000002"), "Fictional Field Service Branch"),
-        new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "Fictional North Service Branch"),
-        new(Guid.Parse("00000000-0000-4000-8000-000000000004"), "Fictional South Service Branch"),
-        new(Guid.Parse("00000000-0000-4000-8000-000000000005"), "Fictional West Service Branch")
+        new(Guid.Parse("00000000-0000-4000-8000-000000000001"), "中央サービス支店"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000002"), "現場サービス支店"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "北部サービス支店"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000004"), "南部サービス支店"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000005"), "西部サービス支店")
     ];
 
     public static IReadOnlyDictionary<string, DemoUser> UsersByRole { get; } =
@@ -30,28 +30,28 @@ public static class DemoDataManifest
             [DemoRoleNames.SystemAdministrator] = new(
                 "60000000-0000-4000-8000-000000000001",
                 "system.admin@fieldops.demo",
-                "Alex Morgan",
+                "佐藤 健一",
                 null,
                 "61000000-0000-4000-8000-000000000001",
                 "62000000-0000-4000-8000-000000000001"),
             [DemoRoleNames.BranchManager] = new(
                 "60000000-0000-4000-8000-000000000002",
                 "branch.manager@fieldops.demo",
-                "Jordan Lee",
+                "鈴木 美咲",
                 Branches[0].Id,
                 "61000000-0000-4000-8000-000000000002",
                 "62000000-0000-4000-8000-000000000002"),
             [DemoRoleNames.SalesRepresentative] = new(
                 "60000000-0000-4000-8000-000000000003",
                 "sales.rep@fieldops.demo",
-                "Casey Rivera",
+                "高橋 翔太",
                 Branches[0].Id,
                 "61000000-0000-4000-8000-000000000003",
                 "62000000-0000-4000-8000-000000000003"),
             [DemoRoleNames.FieldTechnician] = new(
                 "60000000-0000-4000-8000-000000000004",
                 "field.tech@fieldops.demo",
-                "Taylor Kim",
+                "田中 葵",
                 Branches[1].Id,
                 "61000000-0000-4000-8000-000000000004",
                 "62000000-0000-4000-8000-000000000004")

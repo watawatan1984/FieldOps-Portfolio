@@ -134,11 +134,11 @@ public sealed class DemoDataSeeder(
         SELECT
             ('00000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
             (ARRAY[
-                'Fictional Central Service Branch',
-                'Fictional Field Service Branch',
-                'Fictional North Service Branch',
-                'Fictional South Service Branch',
-                'Fictional West Service Branch'])[i],
+                '中央サービス支店',
+                '現場サービス支店',
+                '北部サービス支店',
+                '南部サービス支店',
+                '西部サービス支店'])[i],
             TIMESTAMPTZ '2026-01-01 00:00:00+00',
             TIMESTAMPTZ '2026-01-01 00:00:00+00'
         FROM generate_series(1, 5) AS i;
@@ -146,7 +146,7 @@ public sealed class DemoDataSeeder(
         INSERT INTO "Parties" ("Id", "OrganizationName", "FirstName", "LastName", "CreatedAtUtc", "UpdatedAtUtc")
         SELECT
             ('10000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
-            'Fictional Service Customer ' || lpad(i::text, 2, '0'),
+            '架空設備サービス ' || lpad(i::text, 2, '0'),
             NULL,
             NULL,
             TIMESTAMPTZ '2026-01-01 00:00:00+00',
@@ -184,8 +184,8 @@ public sealed class DemoDataSeeder(
         SELECT
             ('11000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
             ('10000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
-            'Demo',
-            'Contact ' || lpad(i::text, 2, '0'),
+            '担当者' || lpad(i::text, 2, '0'),
+            '架空',
             TRUE,
             TIMESTAMPTZ '2026-01-01 00:00:00+00',
             TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -196,7 +196,7 @@ public sealed class DemoDataSeeder(
             ('12000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
             ('10000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
             ('00000000-0000-4000-8000-' || lpad((((i - 1) % 5) + 1)::text, 12, '0'))::uuid,
-            'Fictional Service Site ' || lpad(i::text, 2, '0'),
+            '架空設備 現場 ' || lpad(i::text, 2, '0'),
             TIMESTAMPTZ '2026-01-01 00:00:00+00',
             TIMESTAMPTZ '2026-01-01 00:00:00+00'
         FROM generate_series(1, 40) AS i;
@@ -255,7 +255,7 @@ public sealed class DemoDataSeeder(
             END,
             TIMESTAMPTZ '2026-01-03 00:00:00+00' + (i || ' minutes')::interval,
             ('00000000-0000-4000-8000-' || lpad((((party_number - 1) % 5) + 1)::text, 12, '0'))::uuid,
-            'Fictional work event ' || lpad(i::text, 3, '0'),
+            '架空の作業記録 ' || lpad(i::text, 3, '0'),
             '60000000-0000-4000-8000-000000000004',
             TIMESTAMPTZ '2026-01-01 00:00:00+00',
             TIMESTAMPTZ '2026-01-01 00:00:00+00'

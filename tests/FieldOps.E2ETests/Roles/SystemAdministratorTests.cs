@@ -18,7 +18,7 @@ public sealed class SystemAdministratorTests(FieldOpsWebFixture fixture)
             DashboardPage dashboard = new(page);
             string openOpportunities = await dashboard.Metric("open-opportunities").GetAttributeAsync("data-value") ?? string.Empty;
             await page.GetByRole(AriaRole.Link, new() { Name = "Customers", Exact = true }).ClickAsync();
-            await new PartyPage(page).EditAsync("Fictional Service Customer 01", "Fictional Service Customer 01 E2E");
+            await new PartyPage(page).EditAsync("架空設備サービス 01", "架空設備サービス 01 E2E");
             Assert.Equal(1, await fixture.QueryScalarAsync<int>(
                 "SELECT count(*) FROM \"AuditEntries\" WHERE \"AggregateId\" = '10000000-0000-4000-8000-000000000001' AND \"Action\" = 'Updated'"));
             await page.GetByRole(AriaRole.Link, new() { Name = "Audit", Exact = true }).ClickAsync();
@@ -28,7 +28,7 @@ public sealed class SystemAdministratorTests(FieldOpsWebFixture fixture)
             Assert.Equal(30, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"SalesOpportunities\""));
             Assert.Equal(80, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"WorkOrders\""));
             Assert.Equal(250, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"WorkEvents\""));
-            Assert.Equal("Fictional Service Customer 01", await fixture.QueryScalarAsync<string>(
+            Assert.Equal("架空設備サービス 01", await fixture.QueryScalarAsync<string>(
                 "SELECT \"OrganizationName\" FROM \"Parties\" WHERE \"Id\" = '10000000-0000-4000-8000-000000000001'"));
             Assert.Equal(openOpportunities, await dashboard.Metric("open-opportunities").GetAttributeAsync("data-value"));
             Assert.Equal(1, await fixture.QueryScalarAsync<int>(

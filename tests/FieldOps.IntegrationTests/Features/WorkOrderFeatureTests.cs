@@ -592,7 +592,7 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
     {
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
-        Branch branch = await dbContext.Branches.SingleAsync(item => item.Name == "Fictional Central Service Branch");
+        Branch branch = await dbContext.Branches.SingleAsync(item => item.Name == "中央サービス支店");
         ApplicationUser sales = await dbContext.Users.SingleAsync(item => item.UserName == "sales.rep@fieldops.demo");
         ApplicationUser centralTechnician = await dbContext.Users.SingleAsync(item => item.UserName == "field.tech@fieldops.demo");
         centralTechnician.BranchId = branch.Id;
@@ -756,7 +756,7 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         string token = ExtractAntiforgeryToken(html);
         string roleToken = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(role)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
         Assert.NotEmpty(roleToken);
         using HttpResponseMessage response = await client.PostAsync(

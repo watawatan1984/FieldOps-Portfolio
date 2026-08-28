@@ -346,7 +346,7 @@ public sealed class AuthorizationPolicyTests(PostgresFixture postgres)
         Assert.NotEmpty(token);
         string roleToken = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(role)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
         Assert.NotEmpty(roleToken);
 

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 
 using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
+using FieldOps.Web.Formatting;
 using FieldOps.Web.Models;
 using FieldOps.Web.Services;
 
@@ -36,10 +37,10 @@ public sealed class DemoLoginController(
 
         return View(new[]
         {
-            CreateCard(DemoRoleNames.SystemAdministrator, "Alex Morgan", "Full demo administration and audit access."),
-            CreateCard(DemoRoleNames.BranchManager, "Jordan Lee", "Manage one fictional operating branch."),
-            CreateCard(DemoRoleNames.SalesRepresentative, "Casey Rivera", "Manage customers and sales for one fictional branch."),
-            CreateCard(DemoRoleNames.FieldTechnician, "Taylor Kim", "Work with assigned fictional field activities.")
+            CreateCard(DemoRoleNames.SystemAdministrator, "佐藤 健一", "全体設定、監査、デモデータの初期化を確認できます。"),
+            CreateCard(DemoRoleNames.BranchManager, "鈴木 美咲", "担当支店の顧客、営業案件、作業予定を管理できます。"),
+            CreateCard(DemoRoleNames.SalesRepresentative, "高橋 翔太", "担当支店の顧客登録と営業案件の進捗管理ができます。"),
+            CreateCard(DemoRoleNames.FieldTechnician, "田中 葵", "割り当てられた作業予定の記録と完了処理ができます。")
         });
     }
 
@@ -91,5 +92,5 @@ public sealed class DemoLoginController(
     }
 
     private DemoRoleCardViewModel CreateCard(string role, string displayName, string description) =>
-        new(role, displayName, description, _roleProtector.Protect(role, RoleTokenLifetime));
+        new(role, UiDisplayText.ForRole(role), displayName, description, _roleProtector.Protect(role, RoleTokenLifetime));
 }

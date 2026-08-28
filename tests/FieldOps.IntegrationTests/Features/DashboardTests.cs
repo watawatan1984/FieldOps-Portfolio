@@ -107,10 +107,11 @@ public sealed class DashboardTests(PostgresFixture postgres)
         await LoginAsAsync(administrator, DemoRoleNames.SystemAdministrator);
         using HttpResponseMessage comparisonResponse = await administrator.GetAsync("/branches");
         string comparison = await comparisonResponse.Content.ReadAsStringAsync();
+        string decodedComparison = WebUtility.HtmlDecode(comparison);
         Assert.Equal(HttpStatusCode.OK, comparisonResponse.StatusCode);
         Assert.Contains("National branch comparison", comparison, StringComparison.Ordinal);
-        Assert.Contains("Fictional Central Service Branch", comparison, StringComparison.Ordinal);
-        Assert.Contains("Fictional Field Service Branch", comparison, StringComparison.Ordinal);
+        Assert.Contains("中央サービス支店", decodedComparison, StringComparison.Ordinal);
+        Assert.Contains("現場サービス支店", decodedComparison, StringComparison.Ordinal);
         Assert.Contains($"data-branch-id=\"{seed.CentralBranchId}\" data-open-opportunities=\"4\"", comparison, StringComparison.Ordinal);
         Assert.Contains($"data-branch-id=\"{seed.FieldBranchId}\" data-open-opportunities=\"1\"", comparison, StringComparison.Ordinal);
         Assert.Contains("Scheduled work", comparison, StringComparison.Ordinal);
@@ -152,6 +153,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         string repeatedFirstPage = await administrator.GetStringAsync("/audit?page=1&pageSize=2");
         string secondPage = await administrator.GetStringAsync("/audit?page=2&pageSize=2");
         string boundedPage = await administrator.GetStringAsync("/audit?page=1&pageSize=1000");
+        string decodedAuditPages = WebUtility.HtmlDecode(firstPage + secondPage + boundedPage);
 
         string[] firstActions = ExtractAuditActions(firstPage);
         Assert.Equal(2, firstActions.Length);
@@ -159,7 +161,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         Assert.DoesNotContain(firstActions[0], ExtractAuditActions(secondPage));
         Assert.DoesNotContain(firstActions[1], ExtractAuditActions(secondPage));
         Assert.Contains("data-page-size=\"100\"", boundedPage, StringComparison.Ordinal);
-        Assert.Contains("Jordan Lee", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
+        Assert.Contains("鈴木 美咲", decodedAuditPages, StringComparison.Ordinal);
         Assert.DoesNotContain(audit.ManagerUserId, firstPage + secondPage + boundedPage, StringComparison.Ordinal);
         Assert.DoesNotContain("ultra-secret-value", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
         Assert.DoesNotContain("Alpha123", boundedPage, StringComparison.Ordinal);
@@ -197,10 +199,10 @@ public sealed class DashboardTests(PostgresFixture postgres)
         await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString);
         (string Role, string Name, string Branch, string[] Visible, string[] Hidden, bool CanInitialize)[] cases =
         [
-            (DemoRoleNames.SystemAdministrator, "Alex Morgan", "National", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history", "branches", "audit"], [], true),
-            (DemoRoleNames.BranchManager, "Jordan Lee", "Fictional Central Service Branch", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history", "branches", "audit"], [], false),
-            (DemoRoleNames.SalesRepresentative, "Casey Rivera", "Fictional Central Service Branch", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history"], ["branches", "audit"], false),
-            (DemoRoleNames.FieldTechnician, "Taylor Kim", "Fictional Field Service Branch", ["dashboard", "sales", "work-orders", "work-history"], ["customers", "business-partners", "branches", "audit"], false)
+            (DemoRoleNames.SystemAdministrator, "佐藤 健一", "National", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history", "branches", "audit"], [], true),
+            (DemoRoleNames.BranchManager, "鈴木 美咲", "中央サービス支店", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history", "branches", "audit"], [], false),
+            (DemoRoleNames.SalesRepresentative, "高橋 翔太", "中央サービス支店", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history"], ["branches", "audit"], false),
+            (DemoRoleNames.FieldTechnician, "田中 葵", "現場サービス支店", ["dashboard", "sales", "work-orders", "work-history"], ["customers", "business-partners", "branches", "audit"], false)
         ];
 
         foreach (var item in cases)
@@ -208,6 +210,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
             using HttpClient client = CreateClient(application);
             await LoginAsAsync(client, item.Role);
             string dashboard = await client.GetStringAsync("/");
+            string decodedDashboard = WebUtility.HtmlDecode(dashboard);
 
             Assert.Contains("class=\"offcanvas-lg offcanvas-start app-sidebar\"", dashboard, StringComparison.Ordinal);
             Assert.Contains("data-bs-toggle=\"offcanvas\"", dashboard, StringComparison.Ordinal);
@@ -215,9 +218,9 @@ public sealed class DashboardTests(PostgresFixture postgres)
             Assert.Contains("aria-label=\"Primary navigation\"", dashboard, StringComparison.Ordinal);
             Assert.Single(Regex.Matches(dashboard, "aria-current=\"page\"").Cast<Match>());
             Assert.Contains("data-nav=\"dashboard\" aria-current=\"page\"", dashboard, StringComparison.Ordinal);
-            Assert.Contains($"data-user-name=\"{item.Name}\"", dashboard, StringComparison.Ordinal);
+            Assert.Contains($"data-user-name=\"{item.Name}\"", decodedDashboard, StringComparison.Ordinal);
             Assert.Contains($"data-user-role=\"{item.Role}\"", dashboard, StringComparison.Ordinal);
-            Assert.Contains($"data-user-branch=\"{item.Branch}\"", dashboard, StringComparison.Ordinal);
+            Assert.Contains($"data-user-branch=\"{item.Branch}\"", decodedDashboard, StringComparison.Ordinal);
             Assert.Equal(item.CanInitialize, dashboard.Contains(">初期化</a>", StringComparison.Ordinal));
             if (item.CanInitialize)
             {
@@ -410,8 +413,8 @@ public sealed class DashboardTests(PostgresFixture postgres)
     {
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext db = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
-        Branch central = await db.Branches.SingleAsync(branch => branch.Name == "Fictional Central Service Branch");
-        Branch field = await db.Branches.SingleAsync(branch => branch.Name == "Fictional Field Service Branch");
+        Branch central = await db.Branches.SingleAsync(branch => branch.Name == "中央サービス支店");
+        Branch field = await db.Branches.SingleAsync(branch => branch.Name == "現場サービス支店");
         ApplicationUser technician = await db.Users.SingleAsync(user => user.UserName == "field.tech@fieldops.demo");
         ApplicationUser salesUser = await db.Users.SingleAsync(user => user.UserName == "sales.rep@fieldops.demo");
 
@@ -538,8 +541,8 @@ public sealed class DashboardTests(PostgresFixture postgres)
     {
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext db = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
-        Branch central = await db.Branches.SingleAsync(branch => branch.Name == "Fictional Central Service Branch");
-        Branch field = await db.Branches.SingleAsync(branch => branch.Name == "Fictional Field Service Branch");
+        Branch central = await db.Branches.SingleAsync(branch => branch.Name == "中央サービス支店");
+        Branch field = await db.Branches.SingleAsync(branch => branch.Name == "現場サービス支店");
         Party centralCustomer = CreateParty(central, "Fictional Central Nav Customer");
         centralCustomer.AddRole(PartyRoleType.Customer);
         Party fieldCustomer = CreateParty(field, "Fictional Field Nav Customer");
@@ -657,7 +660,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
             "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
         string roleToken = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(role)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
         Assert.NotEmpty(requestToken);
         Assert.NotEmpty(roleToken);

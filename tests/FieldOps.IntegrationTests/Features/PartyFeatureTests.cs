@@ -156,16 +156,18 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage managerResponse = await managerClient.GetAsync(
             $"/parties/{partyId}?branchId={sourceBranchId}");
         string managerHtml = await managerResponse.Content.ReadAsStringAsync();
+        string decodedManagerHtml = WebUtility.HtmlDecode(managerHtml);
         using HttpResponseMessage administratorResponse = await administratorClient.GetAsync(
             $"/parties/{partyId}?branchId={sourceBranchId}");
         string administratorHtml = await administratorResponse.Content.ReadAsStringAsync();
+        string decodedAdministratorHtml = WebUtility.HtmlDecode(administratorHtml);
 
         Assert.Equal(HttpStatusCode.OK, managerResponse.StatusCode);
-        Assert.Contains(sourceName, managerHtml);
-        Assert.DoesNotContain(targetName, managerHtml);
+        Assert.Contains(sourceName, decodedManagerHtml);
+        Assert.DoesNotContain(targetName, decodedManagerHtml);
         Assert.Equal(HttpStatusCode.OK, administratorResponse.StatusCode);
-        Assert.Contains(sourceName, administratorHtml);
-        Assert.Contains(targetName, administratorHtml);
+        Assert.Contains(sourceName, decodedAdministratorHtml);
+        Assert.Contains(targetName, decodedAdministratorHtml);
     }
 
     [Fact]
@@ -721,7 +723,7 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
             "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
         string roleToken = Regex.Match(
             html,
-            $"<h2 class=\"h5\">{Regex.Escape(role)}</h2>.*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
 
         Assert.NotEmpty(token);

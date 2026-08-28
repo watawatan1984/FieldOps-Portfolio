@@ -22,20 +22,20 @@ public sealed class BranchManagerTests(FieldOpsWebFixture fixture)
             await fixture.QueryScalarAsync<int>(
                 "UPDATE \"AspNetUsers\" SET \"BranchId\" = '00000000-0000-4000-8000-000000000001' WHERE \"Id\" = '60000000-0000-4000-8000-000000000004' RETURNING 1");
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.BranchManager);
-            await Assertions.Expect(page.Locator("[data-user-branch='Fictional Central Service Branch']")).ToBeVisibleAsync();
+            await Assertions.Expect(page.Locator("[data-user-branch='中央サービス支店']")).ToBeVisibleAsync();
             Assert.Equal(
                 branchOpenOpportunities.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 await new DashboardPage(page).Metric("open-opportunities").GetAttributeAsync("data-value"));
             string dashboardHtml = await page.ContentAsync();
-            Assert.DoesNotContain("Fictional Field Service Branch", dashboardHtml, StringComparison.Ordinal);
-            Assert.DoesNotContain("Fictional North Service Branch", dashboardHtml, StringComparison.Ordinal);
-            Assert.DoesNotContain("Fictional South Service Branch", dashboardHtml, StringComparison.Ordinal);
-            Assert.DoesNotContain("Fictional West Service Branch", dashboardHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("現場サービス支店", dashboardHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("北部サービス支店", dashboardHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("南部サービス支店", dashboardHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("西部サービス支店", dashboardHtml, StringComparison.Ordinal);
             await page.GetByRole(AriaRole.Link, new() { Name = "Customers", Exact = true }).ClickAsync();
-            await new PartyPage(page).EditAsync("Fictional Service Customer 01", "Fictional Service Customer 01 Manager");
+            await new PartyPage(page).EditAsync("架空設備サービス 01", "架空設備サービス 01 Manager");
             await page.GetByRole(AriaRole.Link, new() { Name = "Work orders", Exact = true }).ClickAsync();
             DateTime scheduleStartedUtc = DateTime.UtcNow;
-            await new WorkOrderPage(page).ScheduleAsync("Fictional Service Customer 01 Manager");
+            await new WorkOrderPage(page).ScheduleAsync("架空設備サービス 01 Manager");
             ScheduledWorkProof work = await fixture.QuerySingleAsync(
                 "SELECT \"Status\", \"AssignedUserId\", \"ScheduledStartUtc\", \"BranchId\" FROM \"WorkOrders\" WHERE \"Id\" = '30000000-0000-4000-8000-000000000001'",
                 reader => new ScheduledWorkProof(
