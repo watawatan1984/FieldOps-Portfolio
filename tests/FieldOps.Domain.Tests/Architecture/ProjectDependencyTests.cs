@@ -19,19 +19,15 @@ public sealed class ProjectDependencyTests
     }
 
     [Fact]
-    public void Render_checks_pass_deploys_are_not_blocked_by_automatic_release_verification()
+    public void Render_checks_pass_deploys_require_manual_release_verification()
     {
         string repositoryRoot = FindRepositoryRoot();
         string renderYaml = File.ReadAllText(Path.Combine(repositoryRoot, "render.yaml"));
         string releaseWorkflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "release.yml"));
 
-        bool renderWaitsForChecks = renderYaml.Contains("autoDeployTrigger: checksPass", StringComparison.Ordinal);
-
+        Assert.Contains("autoDeployTrigger: checksPass", renderYaml, StringComparison.Ordinal);
         Assert.Contains("workflow_dispatch:", releaseWorkflow, StringComparison.Ordinal);
-        if (renderWaitsForChecks)
-        {
-            Assert.DoesNotContain("workflow_run:", releaseWorkflow, StringComparison.Ordinal);
-        }
+        Assert.DoesNotContain("workflow_run:", releaseWorkflow, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()
