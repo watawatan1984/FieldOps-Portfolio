@@ -7,7 +7,7 @@ namespace FieldOps.Web.Controllers;
 [Route("status")]
 public sealed class StatusController : Controller
 {
-    [AcceptVerbs("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", Route = "{code:int}")]
+    [AcceptVerbs("GET", "POST", "HEAD", Route = "{code:int}")]
     public IActionResult Index(int code)
     {
         StatusPageViewModel? model = code switch
@@ -27,7 +27,7 @@ public sealed class StatusController : Controller
 
         if (model is null)
         {
-            return StatusCode(code);
+            return BadRequest();
         }
 
         Response.StatusCode = model.StatusCode;

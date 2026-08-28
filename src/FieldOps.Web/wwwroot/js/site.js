@@ -10,6 +10,17 @@ if (document.querySelector('[data-remove-query-after-load]')) {
   window.history.replaceState(null, document.title, window.location.pathname);
 }
 
+document.querySelectorAll('[data-history-back]').forEach(link => {
+  link.addEventListener('click', event => {
+    if (window.history.length <= 1) {
+      return;
+    }
+
+    event.preventDefault();
+    window.history.back();
+  });
+});
+
 const primaryNavigation = document.querySelector('#primaryNavigation');
 const primaryNavigationToggle = document.querySelector('[aria-controls="primaryNavigation"]');
 if (primaryNavigation && primaryNavigationToggle) {

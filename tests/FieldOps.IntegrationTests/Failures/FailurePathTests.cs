@@ -123,14 +123,22 @@ public sealed class FailurePathTests(PostgresFixture postgres)
         string forbiddenHtml = await forbidden.Content.ReadAsStringAsync();
         string decodedForbiddenHtml = WebUtility.HtmlDecode(forbiddenHtml);
         using HttpResponseMessage unexpected = await client.GetAsync("/status/500");
+        using HttpResponseMessage accidentalOk = await client.GetAsync("/status/200");
+        using HttpResponseMessage accidentalRedirect = await client.GetAsync("/status/302");
 
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         Assert.Contains("指定された情報が見つかりません", decodedMissingHtml, StringComparison.Ordinal);
         Assert.Contains("前の画面へ戻る", decodedMissingHtml, StringComparison.Ordinal);
+        Assert.Contains("href=\"/\"", missingHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"javascript:", missingHtml, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         Assert.Contains("この操作を行う権限がありません", decodedForbiddenHtml, StringComparison.Ordinal);
         Assert.Contains("前の画面へ戻る", decodedForbiddenHtml, StringComparison.Ordinal);
-        Assert.Equal(HttpStatusCode.InternalServerError, unexpected.StatusCode);
+        Assert.Contains("href=\"/\"", forbiddenHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"javascript:", forbiddenHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpStatusCode.BadRequest, unexpected.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, accidentalOk.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, accidentalRedirect.StatusCode);
     }
 
     [Fact]

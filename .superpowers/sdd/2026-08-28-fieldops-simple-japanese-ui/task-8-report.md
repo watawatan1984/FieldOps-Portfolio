@@ -43,3 +43,45 @@ Complete
 
 - `git diff --check` 実行時にWindowsのCRLF変換警告は出たが、空白エラーはない。
 - 公開環境へのdeployや公開デモ初期化はTask 8の範囲外で未実行。
+
+## Fix round 1
+
+### Status
+
+Complete
+
+### 変更
+
+- `StatusController.Index` は403/404以外の `/status/{code:int}` を `BadRequest` で返すようにし、`/status/200` や `/status/302` が成功・リダイレクト扱いにならないようにした。
+- `StatusController.Index` の対応メソッドをGET/POST/HEADに限定し、既存のunsupported method 405契約を維持した。
+- `Views/Status/Index.cshtml` の `href="javascript:history.back()"` を廃止し、`href="/" data-history-back` に変更した。
+- `site.js` に `data-history-back` の外部スクリプト処理を追加し、履歴がある場合だけ `history.back()`、ない場合は `/` フォールバックへ進むようにした。
+
+### RED / GREEN
+
+- RED: `StatusCodePagesRenderSafeJapaneseRecoveryOnlyForForbiddenAndNotFound` に `/status/200`、`/status/302`、`href="javascript:"` 禁止の期待を追加し、既存実装で失敗することを確認した。
+- GREEN: 同テストが 1 passed / 0 failed になった。
+- GREEN: 405回帰を `ReturnUrlCannotOpenRedirectLoginOrLogoutAndUnsupportedMethodsReturn405` と合わせて確認し、2 passed / 0 failed になった。
+
+### 対象テスト
+
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~StatusCodePagesRenderSafeJapaneseRecoveryOnlyForForbiddenAndNotFound"` -> 1 passed, 0 failed
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~StatusCodePagesRenderSafeJapaneseRecoveryOnlyForForbiddenAndNotFound|FullyQualifiedName~ReturnUrlCannotOpenRedirectLoginOrLogoutAndUnsupportedMethodsReturn405"` -> 2 passed, 0 failed
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~WorkHistorySearchTests|FullyQualifiedName~DashboardTests|FullyQualifiedName~FailurePathTests"` -> 43 passed, 0 failed
+- `dotnet build src\FieldOps.Web\FieldOps.Web.csproj -c Release` -> succeeded, 0 warnings, 0 errors
+- `dotnet test tests\FieldOps.E2ETests --filter "FullyQualifiedName~SystemAdministratorTests|FullyQualifiedName~ResetPage" -- Playwright.BrowserName=chromium` -> 1 passed, 0 failed
+
+### 全体テスト
+
+- `dotnet test FieldOps.sln --configuration Release --no-restore` -> Domain 62 passed, E2E 19 passed, Integration 203 passed, 0 failed
+- `git diff --check` -> exit code 0
+
+### 機密漏えい自己レビュー
+
+- 403/404以外の `/status/{code:int}` は本文付き成功画面を返さず、意図しない200/302を公開しない。
+- 戻り導線は `href="/"` をフォールバックにし、インラインJavaScript URLを使わないためCSP `script-src 'self'` と整合する。
+
+### 既知懸念
+
+- `git diff --check` 実行時にWindowsのCRLF変換警告は出たが、空白エラーはない。
+- Minorのformat全面調整はTask 10へdeferred。
