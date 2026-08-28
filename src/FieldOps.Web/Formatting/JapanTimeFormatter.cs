@@ -10,13 +10,34 @@ public static class JapanTimeFormatter
 
     public static string FormatUtc(DateTime utcValue)
     {
+        DateTime japanValue = ToJapanDateTime(utcValue);
+        return japanValue.ToString("yyyy年M月d日 H:mm", CultureInfo.GetCultureInfo("ja-JP"));
+    }
+
+    public static DateOnly ToJapanDate(DateTime utcValue)
+    {
+        return DateOnly.FromDateTime(ToJapanDateTime(utcValue));
+    }
+
+    public static TimeOnly ToJapanTime(DateTime utcValue)
+    {
+        return TimeOnly.FromDateTime(ToJapanDateTime(utcValue));
+    }
+
+    public static DateTime ToUtc(DateOnly date, TimeOnly time)
+    {
+        DateTime local = date.ToDateTime(time, DateTimeKind.Unspecified);
+        return TimeZoneInfo.ConvertTimeToUtc(local, JapanTimeZone);
+    }
+
+    private static DateTime ToJapanDateTime(DateTime utcValue)
+    {
         if (utcValue.Kind != DateTimeKind.Utc)
         {
             throw new ArgumentException("The timestamp must be UTC.", nameof(utcValue));
         }
 
-        DateTime japanValue = TimeZoneInfo.ConvertTimeFromUtc(utcValue, JapanTimeZone);
-        return japanValue.ToString("yyyy-MM-dd HH:mm 'JST'", CultureInfo.InvariantCulture);
+        return TimeZoneInfo.ConvertTimeFromUtc(utcValue, JapanTimeZone);
     }
 
     private static TimeZoneInfo FindJapanTimeZone()

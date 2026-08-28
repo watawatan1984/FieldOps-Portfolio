@@ -42,7 +42,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         AssertMetric(html, "work-in-progress", 3);
         AssertMetric(html, "overdue-work", 2);
         AssertMetric(html, "completions-this-month", 2);
-        Assert.Contains("2026-08-12 21:00 JST", html, StringComparison.Ordinal);
+        Assert.Contains("2026年8月12日 21:00", WebUtility.HtmlDecode(html), StringComparison.Ordinal);
         Assert.Contains("Asia/Tokyo", html, StringComparison.Ordinal);
     }
 
@@ -119,7 +119,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         Assert.Contains("Completions this month", comparison, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, (await administrator.GetAsync($"/branches/{seed.FieldBranchId}")).StatusCode);
         string administratorDetails = await administrator.GetStringAsync($"/branches/{seed.CentralBranchId}");
-        Assert.Contains("2026-08-12 21:00 JST", administratorDetails, StringComparison.Ordinal);
+        Assert.Contains("2026年8月12日 21:00", WebUtility.HtmlDecode(administratorDetails), StringComparison.Ordinal);
         Assert.Contains("Asia/Tokyo", administratorDetails, StringComparison.Ordinal);
 
         using HttpClient manager = CreateClient(application);
@@ -167,7 +167,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         Assert.DoesNotContain("秘密情報", boundedPage, StringComparison.Ordinal);
         Assert.Contains("Details withheld", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
         Assert.Contains("OwnerUserId, Status", boundedPage, StringComparison.Ordinal);
-        Assert.Contains("2026-08-12 19:00 JST", boundedPage, StringComparison.Ordinal);
+        Assert.Contains("2026年8月12日 19:00", WebUtility.HtmlDecode(boundedPage), StringComparison.Ordinal);
         Assert.Contains("Asia/Tokyo", boundedPage, StringComparison.Ordinal);
         using HttpResponseMessage extremePage = await administrator.GetAsync(
             "/audit?page=999999999999999999999&pageSize=100");

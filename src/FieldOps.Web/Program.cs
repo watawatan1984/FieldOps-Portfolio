@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using FieldOps.Features.Abstractions;
 using FieldOps.Features.Administration;
 using FieldOps.Features.Dashboard;
@@ -18,6 +20,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
@@ -49,6 +52,7 @@ if (args.Length == 1 && string.Equals(args[0], "--health-check", StringCompariso
 }
 
 var builder = WebApplication.CreateBuilder(args);
+CultureInfo japaneseCulture = CultureInfo.GetCultureInfo("ja-JP");
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole(options => options.FormatterName = RedactedJsonConsoleFormatter.FormatterName);
@@ -66,6 +70,35 @@ builder.Services.AddControllersWithViews(options =>
     {
         options.Conventions.Add(new SuppressControllerConvention(typeof(LoadTestController)));
     }
+
+    options.ModelBindingMessageProvider.SetAttemptedValueIsInvalidAccessor(
+        (value, fieldName) => $"{fieldName}の値「{value}」は無効です。");
+    options.ModelBindingMessageProvider.SetMissingBindRequiredValueAccessor(
+        fieldName => $"{fieldName}は必須です。");
+    options.ModelBindingMessageProvider.SetMissingKeyOrValueAccessor(
+        () => "必須の値が入力されていません。");
+    options.ModelBindingMessageProvider.SetMissingRequestBodyRequiredValueAccessor(
+        () => "リクエスト本文は必須です。");
+    options.ModelBindingMessageProvider.SetNonPropertyAttemptedValueIsInvalidAccessor(
+        value => $"値「{value}」は無効です。");
+    options.ModelBindingMessageProvider.SetNonPropertyUnknownValueIsInvalidAccessor(
+        () => "入力値は無効です。");
+    options.ModelBindingMessageProvider.SetNonPropertyValueMustBeANumberAccessor(
+        () => "数値を入力してください。");
+    options.ModelBindingMessageProvider.SetUnknownValueIsInvalidAccessor(
+        fieldName => $"{fieldName}の入力値は無効です。");
+    options.ModelBindingMessageProvider.SetValueIsInvalidAccessor(
+        value => $"値「{value}」は無効です。");
+    options.ModelBindingMessageProvider.SetValueMustBeANumberAccessor(
+        fieldName => $"{fieldName}には数値を入力してください。");
+    options.ModelBindingMessageProvider.SetValueMustNotBeNullAccessor(
+        fieldName => $"{fieldName}は必須です。");
+});
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    options.DefaultRequestCulture = new RequestCulture(japaneseCulture);
+    options.SupportedCultures = [japaneseCulture];
+    options.SupportedUICultures = [japaneseCulture];
 });
 builder.Services.AddRateLimiter(RateLimitPolicies.Configure);
 builder.Services.AddOptions<TrustedProxyOptions>()
@@ -185,6 +218,8 @@ if (!mapsLoadTestSurface)
         await next(context);
     });
 }
+
+app.UseRequestLocalization();
 
 app.UseRouting();
 
