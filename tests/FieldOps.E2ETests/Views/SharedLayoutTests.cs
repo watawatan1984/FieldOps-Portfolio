@@ -60,7 +60,7 @@ public sealed class SharedLayoutTests(FieldOpsWebFixture fixture)
                   form.method = 'post';
                   form.action = '/confirmed-action';
                   form.innerHTML = `
-                    <input required name="target" value="A-001" />
+                    <input required name="target" />
                     <button type="submit" name="decision" value="approve"
                             data-confirm-action
                             data-confirm-title="承認しますか"
@@ -76,6 +76,13 @@ public sealed class SharedLayoutTests(FieldOpsWebFixture fixture)
                 """);
 
             ILocator submit = page.GetByRole(AriaRole.Button, new() { Name = "承認する", Exact = true });
+            await submit.ClickAsync();
+            await Assertions.Expect(page.GetByRole(AriaRole.Dialog, new() { Name = "承認しますか", Exact = true }))
+                .ToBeHiddenAsync();
+            bool submittedWhileInvalid = await page.EvaluateAsync<bool>("() => Boolean(window.__submitted)");
+            Assert.False(submittedWhileInvalid);
+
+            await page.Locator("input[name='target']").FillAsync("A-001");
             await submit.ClickAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Dialog, new() { Name = "承認しますか", Exact = true }))
                 .ToBeVisibleAsync();

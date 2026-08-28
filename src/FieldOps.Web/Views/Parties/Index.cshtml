@@ -17,7 +17,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
     <div>
         <h1>顧客・協力会社を探す</h1>
-        <p class="page-intro mb-1">この画面では顧客を探し、詳しい情報を確認できます。</p>
+        <p class="page-intro mb-1">この画面では顧客と協力会社を探し、詳しい情報を確認できます。</p>
         <p class="text-body-secondary mb-0">担当支店: <strong>@Model.BranchName</strong></p>
     </div>
     <a class="btn btn-primary" asp-action="Create" asp-route-branchId="@Model.BranchId">新しい取引先を登録する</a>
@@ -36,7 +36,7 @@
         <input type="hidden" name="role" value="@Model.Role" />
     }
     <div class="col-md-8">
-        <label for="party-search" class="form-label">顧客名・担当者名・現場名で検索</label>
+        <label for="party-search" class="form-label">取引先名・担当者名・現場名で検索</label>
         <input id="party-search" class="form-control" name="search" value="@Model.Search" />
     </div>
     <div class="col-md-4 align-self-end">
@@ -46,7 +46,7 @@
 
 @if (Model.Items.Count == 0)
 {
-    <p class="app-empty-state" role="status">条件に合う顧客はまだありません。</p>
+    <p class="app-empty-state" role="status">条件に合う顧客・協力会社はまだありません。</p>
 }
 else
 {

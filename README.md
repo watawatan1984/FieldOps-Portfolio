@@ -1,6 +1,37 @@
 # FieldOps Portal
 
-複数拠点を持つサービス会社の顧客・営業・現場作業を題材にした、C# / ASP.NET Core MVC のポートフォリオアプリケーションです。
+FieldOps Portalは、複数の支店で行う「顧客対応」「営業案件」「現場作業」を、1つの画面で確認できる架空の業務システムです。ITに慣れていない人でも、ログイン直後に「今日やること」から順番に確認できるよう、日本語で大きめの文字と押しやすい操作にしています。
+
+公開デモ: [https://fieldops-portfolio.onrender.com](https://fieldops-portfolio.onrender.com)
+
+## このデモでできること
+
+- 顧客と協力会社、担当者、現場情報を確認する
+- 営業案件の状態、提案金額、予定日、次に行うことを見る
+- 作業予定の担当者、開始日時、遅れの有無を確認する
+- 作業履歴と変更履歴を、支店や役割ごとの権限で見る
+- 管理者として、架空デモデータを初期状態へ戻す流れを確認する
+
+## 4つの役割
+
+| 役割 | できること |
+| --- | --- |
+| システム管理者 | 全支店の状況、変更履歴、デモ初期化を確認できます。 |
+| 支店管理者 | 自分の支店の顧客、営業案件、作業予定を管理できます。 |
+| 営業担当者 | 自分の支店の顧客と営業案件を確認・更新できます。 |
+| 現場担当者 | 自分に割り当てられた作業予定と作業履歴を確認できます。 |
+
+このデモに出てくる会社名、氏名、支店名、現場名、作業記録はすべて架空データです。実在する勤務先・顧客・本番システムの情報は含みません。PCとタブレットでの利用を主な対象にしています。
+
+## 開発者向け目次
+
+- [主な機能](#主な機能)
+- [デモの4ロール](#デモの4ロール)
+- [アーキテクチャとドメイン](#アーキテクチャとドメイン)
+- [ローカル起動](#ローカル起動)
+- [デモ初期化の安全性](#デモ初期化の安全性)
+- [テストと検証結果](#テストと検証結果)
+- [公開環境の制約](#公開環境の制約)
 
 > [!IMPORTANT]
 > このリポジトリは、業務システムの設計・実装・検証方法を公開するためにゼロから作成した**架空の再構成（fictional reconstruction）**です。実在する勤務先・顧客・本番システムのソースコード、データ、URL、認証情報は含みません。
@@ -24,12 +55,12 @@
 
 デモモードではパスワードをブラウザへ渡さず、署名されたロール選択によるワンクリックログインを使用します。この仕組みは架空データ専用で、通常の本番認証として利用する設計ではありません。
 
-| ロール               | 主な操作範囲                           |
-| -------------------- | -------------------------------------- |
-| System Administrator | 全支店の参照、監査、デモ初期化         |
-| Branch Manager       | 自支店の顧客・営業・作業管理           |
-| Sales Representative | 自支店の営業・顧客業務                 |
-| Field Technician     | 自分に割り当てられた作業と作業イベント |
+| 画面上の役割 | 内部ロール値 | 主な操作範囲 |
+| --- | --- | --- |
+| システム管理者 | `System Administrator` | 全支店の参照、監査、デモ初期化 |
+| 支店管理者 | `Branch Manager` | 自支店の顧客・営業・作業管理 |
+| 営業担当者 | `Sales Representative` | 自支店の営業・顧客業務 |
+| 現場担当者 | `Field Technician` | 自分に割り当てられた作業と作業イベント |
 
 サーバー側の認可は画面表示だけに依存せず、支店・所有者・担当者をデータベースから再取得して判定します。
 
@@ -130,9 +161,9 @@ dotnet test FieldOps.sln --configuration Release --no-build
 - 公開デモに対してbaseline/stress負荷試験は実行しません。
 - デモログインとデモ初期化は、承認済みの架空データセットでのみ有効にします。
 
-## English summary
+## 日本語概要
 
-FieldOps Portal is a fictional, production-shaped ASP.NET Core MVC portfolio application for multi-branch customer, sales, and field-work operations. It demonstrates PostgreSQL persistence, resource-based authorization, optimistic concurrency, append-only history, structured diagnostics, a guarded demo reset, four role-specific browser journeys, and reproducible local load-test evidence. It contains no employer source code or real customer data. The public live demo runs on Render Free with Neon Free PostgreSQL.
+FieldOps Portalは、複数支店の顧客・営業・現場作業を題材にした架空のASP.NET Core MVCポートフォリオアプリです。PostgreSQL永続化、リソース単位の認可、楽観的同時実行制御、追記専用履歴、構造化診断、安全なデモ初期化、4役割のブラウザ検証、再現可能なローカル負荷試験証跡を示します。勤務先のソースコードや実顧客データは含まず、公開デモはRender FreeとNeon Free PostgreSQLで動作します。
 
 ## License
 

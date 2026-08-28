@@ -17,6 +17,26 @@ if ($parsedBaseUrl.Scheme -ne 'https' -and (-not $AllowLocalHttp -or -not $isLoo
 
 $session = [Microsoft.PowerShell.Commands.WebRequestSession]::new()
 
+function Get-ResponseText {
+    param([Parameter(Mandatory)]$Response)
+
+    if ($null -ne $Response.RawContentStream) {
+        if ($Response.RawContentStream.CanSeek) {
+            $Response.RawContentStream.Position = 0
+        }
+
+        $reader = [System.IO.StreamReader]::new($Response.RawContentStream, [System.Text.Encoding]::UTF8, $true, 1024, $true)
+        try {
+            return $reader.ReadToEnd()
+        }
+        finally {
+            $reader.Dispose()
+        }
+    }
+
+    return [string]$Response.Content
+}
+
 foreach ($path in '/health/live', '/health/ready') {
     $response = Invoke-WebRequest -Uri "$BaseUrl$path" -WebSession $session -UseBasicParsing -TimeoutSec 30
     if ($response.StatusCode -ne 200) {
@@ -25,9 +45,10 @@ foreach ($path in '/health/live', '/health/ready') {
 }
 
 $login = Invoke-WebRequest -Uri "$BaseUrl/demo-login" -WebSession $session -UseBasicParsing -TimeoutSec 30
+$loginContent = [System.Net.WebUtility]::HtmlDecode((Get-ResponseText -Response $login))
 $escapedRole = [Regex]::Escape($Role)
-$formMatch = [Regex]::Matches($login.Content, '(?s)<form[^>]*>.*?</form>') |
-    Where-Object { $_.Value -match "Continue as $escapedRole" } |
+$formMatch = [Regex]::Matches($loginContent, '(?s)<form[^>]*>.*?</form>') |
+    Where-Object { $_.Value -match "data-role=`"$escapedRole`"" } |
     Select-Object -First 1
 if ($null -eq $formMatch) {
     throw "Could not find the $Role demo-login form."
@@ -74,13 +95,15 @@ else {
     $dashboard = Invoke-WebRequest -Uri "$BaseUrl/demo-login" -Method Post -Body $body -WebSession $session -UseBasicParsing -TimeoutSec 30
 }
 
-if ($dashboard.StatusCode -ne 200 -or $dashboard.Content -notmatch '>Dashboard<') {
-    throw "$Role login did not reach the dashboard."
+$dashboardContent = [System.Net.WebUtility]::HtmlDecode((Get-ResponseText -Response $dashboard))
+if ($dashboard.StatusCode -ne 200 -or $dashboardContent -notmatch '>今日やること<') {
+    throw "$Role login did not reach the Japanese home page."
 }
 
 $journey = Invoke-WebRequest -Uri "$BaseUrl/work-orders" -WebSession $session -UseBasicParsing -TimeoutSec 30
-if ($journey.StatusCode -ne 200 -or $journey.Content -notmatch 'Work orders') {
-    throw "$Role read-only work-order journey failed."
+$journeyContent = [System.Net.WebUtility]::HtmlDecode((Get-ResponseText -Response $journey))
+if ($journey.StatusCode -ne 200 -or $journeyContent -notmatch '作業予定') {
+    throw "$Role read-only Japanese work-order journey failed."
 }
 
 Write-Host "Public smoke passed for $Role at $BaseUrl"

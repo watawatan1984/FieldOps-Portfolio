@@ -76,22 +76,22 @@ public sealed class SalesEditInput
     public Guid BranchId { get; set; }
     public uint Version { get; set; }
 
-    [Required]
+    [Required(ErrorMessage = "顧客を選んでください。")]
     [Display(Name = "顧客")]
     public Guid PartyId { get; set; }
 
-    [Required]
+    [Required(ErrorMessage = "現場を選んでください。")]
     [Display(Name = "現場")]
     public Guid SiteId { get; set; }
 
-    [Required]
+    [Required(ErrorMessage = "営業担当者を選んでください。")]
     [Display(Name = "営業担当者")]
     public string OwnerUserId { get; set; } = string.Empty;
 
     [Display(Name = "現場担当者")]
     public string? AssignedUserId { get; set; }
 
-    [Range(typeof(decimal), "0.01", "9999999999999999.99")]
+    [Range(typeof(decimal), "0.01", "9999999999999999.99", ErrorMessage = "提案金額は1円以上で入力してください。")]
     [Display(Name = "提案金額")]
     public decimal? ProposedAmount { get; set; }
 

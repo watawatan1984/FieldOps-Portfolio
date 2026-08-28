@@ -289,7 +289,7 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         string foreignSiteHtml = await foreignSiteSearch.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, foreignSiteSearch.StatusCode);
         Assert.DoesNotContain("Fictional Northwind Services", foreignSiteHtml);
-        Assert.Contains("条件に合う顧客はまだありません", foreignSiteHtml);
+        Assert.Contains("条件に合う顧客・協力会社はまだありません", WebUtility.HtmlDecode(foreignSiteHtml));
     }
 
     [Fact]
@@ -332,6 +332,10 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         Assert.Contains($"/parties/create?branchId={branchId}&role=BusinessPartner", decodedPartnerHtml);
 
         Assert.Equal(HttpStatusCode.OK, allPartiesPage.StatusCode);
+        string decodedAllPartiesHtml = WebUtility.HtmlDecode(allPartiesHtml);
+        Assert.Contains("この画面では顧客と協力会社を探し、詳しい情報を確認できます。", decodedAllPartiesHtml);
+        Assert.Contains("取引先名・担当者名・現場名で検索", decodedAllPartiesHtml);
+        Assert.DoesNotContain("この画面では顧客を探し、詳しい情報を確認できます。", decodedAllPartiesHtml);
         Assert.Contains("d-none d-xl-block", allPartiesHtml);
         Assert.Contains("d-xl-none", allPartiesHtml);
     }

@@ -44,11 +44,11 @@ public sealed class WorkOrderEditInput
     public WorkOrderStatus Status { get; set; }
 
     [Required]
-    [Display(Name = "Assigned technician")]
+    [Display(Name = "担当者")]
     public string AssignedUserId { get; set; } = string.Empty;
 
     [Required]
-    [Display(Name = "Scheduled start (UTC)")]
+    [Display(Name = "作業開始日時")]
     [DisplayFormat(DataFormatString = "{0:yyyy-MM-ddTHH:mm:ssZ}", ApplyFormatInEditMode = true)]
     public DateTime? ScheduledStartUtc { get; set; }
 }

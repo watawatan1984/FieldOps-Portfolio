@@ -7,9 +7,9 @@ using FieldOps.Domain.Enums;
 using FieldOps.Features.Dashboard;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
+using FieldOps.IntegrationTests.Infrastructure;
 using FieldOps.Web.Models;
 using FieldOps.Web.Services;
-using FieldOps.IntegrationTests.Infrastructure;
 
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;

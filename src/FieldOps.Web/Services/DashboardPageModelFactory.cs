@@ -1,5 +1,5 @@
-using FieldOps.Features.Dashboard;
 using FieldOps.Domain.Enums;
+using FieldOps.Features.Dashboard;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Web.Formatting;
 using FieldOps.Web.Models;

@@ -110,8 +110,8 @@ public sealed class WorkOrderQueries(
             .Select(branch => branch.Name)
             .SingleAsync(cancellationToken);
         IReadOnlyList<WorkEventSummary> events = workOrder.Events
-            .OrderBy(workEvent => workEvent.OccurredAtUtc)
-            .ThenBy(workEvent => workEvent.Id)
+            .OrderByDescending(workEvent => workEvent.OccurredAtUtc)
+            .ThenByDescending(workEvent => workEvent.Id)
             .Select(workEvent => new WorkEventSummary(workEvent.EventType, workEvent.OccurredAtUtc, workEvent.Summary))
             .ToList();
 

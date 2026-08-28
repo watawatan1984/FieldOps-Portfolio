@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Text.RegularExpressions;
 
@@ -5,6 +6,7 @@ using FieldOps.Domain.Common;
 using FieldOps.Domain.Entities;
 using FieldOps.Domain.Enums;
 using FieldOps.Features.Abstractions;
+using FieldOps.Features.Sales;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 using FieldOps.IntegrationTests.Infrastructure;
@@ -192,6 +194,25 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         await using AsyncServiceScope finalScope = application.Services.CreateAsyncScope();
         FieldOpsDbContext finalDb = finalScope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Assert.Equal(1, await finalDb.AuditEntries.CountAsync(item => item.AggregateId == id));
+    }
+
+    [Fact]
+    public void SalesEditInputUsesJapaneseDataAnnotationMessages()
+    {
+        SalesEditInput input = new()
+        {
+            PartyId = Guid.NewGuid(),
+            SiteId = Guid.NewGuid(),
+            OwnerUserId = string.Empty,
+            ProposedAmount = 0m
+        };
+        List<ValidationResult> results = [];
+
+        bool valid = Validator.TryValidateObject(input, new ValidationContext(input), results, validateAllProperties: true);
+
+        Assert.False(valid);
+        Assert.Contains(results, result => result.ErrorMessage == "営業担当者を選んでください。");
+        Assert.Contains(results, result => result.ErrorMessage == "提案金額は1円以上で入力してください。");
     }
 
     [Fact]

@@ -203,6 +203,40 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task WorkOrderDetailsShowsNewestWorkHistoryFirst()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+        Guid id = await CreateThroughHttpAsync(client, seed.WonOpportunityId);
+        await ScheduleThroughHttpAsync(client, id, seed.CentralTechnicianUserId);
+        await LoginAsAsync(client, DemoRoleNames.FieldTechnician);
+        await TransitionThroughHttpAsync(client, id, WorkOrderStatus.InProgress);
+
+        (string token, string version, _) = await GetPageFormAsync(client, $"/work-orders/{id}/events/add");
+        using HttpResponseMessage older = await client.PostAsync(
+            $"/work-orders/{id}/events/add",
+            EventForm(version, WorkEventType.Note, "古い作業記録です。", token, "2026-08-11", "09:00"));
+        Assert.Equal(HttpStatusCode.Redirect, older.StatusCode);
+
+        (token, version, _) = await GetPageFormAsync(client, $"/work-orders/{id}/events/add");
+        using HttpResponseMessage newer = await client.PostAsync(
+            $"/work-orders/{id}/events/add",
+            EventForm(version, WorkEventType.Arrival, "新しい作業記録です。", token, "2026-08-11", "10:00"));
+        Assert.Equal(HttpStatusCode.Redirect, newer.StatusCode);
+
+        using HttpResponseMessage details = await client.GetAsync($"/work-orders/{id}");
+        string html = WebUtility.HtmlDecode(await details.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, details.StatusCode);
+        Assert.True(
+            html.IndexOf("新しい作業記録です。", StringComparison.Ordinal) <
+            html.IndexOf("古い作業記録です。", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task WorkOrderPagesEnforceManagerSalesAndAssignedTechnicianScopes()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
@@ -458,8 +492,8 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.Redirect, corrected.StatusCode);
         using HttpResponseMessage details = await client.GetAsync($"/work-orders/{id}");
         string detailsHtml = await details.Content.ReadAsStringAsync();
-        Assert.True(detailsHtml.IndexOf("Fictional completion record.", StringComparison.Ordinal) <
-                    detailsHtml.IndexOf("Fictional correction: completion reference clarified.", StringComparison.Ordinal));
+        Assert.True(detailsHtml.IndexOf("Fictional correction: completion reference clarified.", StringComparison.Ordinal) <
+                    detailsHtml.IndexOf("Fictional completion record.", StringComparison.Ordinal));
 
         await using NpgsqlConnection connection = new(connectionString);
         await connection.OpenAsync();
