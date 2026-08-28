@@ -55,14 +55,14 @@
             {
                 <div class="app-user-summary text-end">
                     <span class="d-block fw-semibold" data-user-name="@userName">@userName</span>
-                    <span class="small text-muted"><span data-user-role="@userRole">@userRoleLabel</span> · <span data-user-branch="@userBranch">@userBranch</span></span>
+                    <span class="app-user-meta text-muted"><span data-user-role="@userRole">@userRoleLabel</span> · <span data-user-branch="@userBranch">@userBranch</span></span>
                 </div>
                 @if (canResetDemo)
                 {
-                    <span data-policy="@Policies.ResetDemo"><a asp-controller="Administration" asp-action="Reset" class="btn btn-outline-secondary btn-sm">初期化</a></span>
+                    <span data-policy="@Policies.ResetDemo"><a asp-controller="Administration" asp-action="Reset" class="btn btn-outline-secondary">初期化</a></span>
                 }
                 <form method="post" asp-controller="DemoLogin" asp-action="Logout" class="mb-0">
-                    <button type="submit" class="btn btn-outline-danger btn-sm">終了する</button>
+                    <button type="submit" class="btn btn-outline-danger">終了する</button>
                 </form>
             }
         </div>

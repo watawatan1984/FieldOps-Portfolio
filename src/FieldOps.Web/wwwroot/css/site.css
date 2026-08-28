@@ -69,6 +69,10 @@ body {
   line-height: 1.15;
 }
 
+.app-user-meta {
+  font-size: 1rem;
+}
+
 .page-intro {
   max-width: 46rem;
   color: #4b5563;

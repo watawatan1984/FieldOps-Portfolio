@@ -38,6 +38,13 @@ public sealed class SharedLayoutTests(FieldOpsWebFixture fixture)
             await Assertions.Expect(page.GetByRole(AriaRole.Navigation, new() { Name = "主なメニュー" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "メニューを開く" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "終了する" })).ToBeVisibleAsync();
+
+            float userMetaFont = await page.Locator("[data-user-role]").EvaluateAsync<float>("el => parseFloat(getComputedStyle(el).fontSize)");
+            float resetFont = await page.GetByRole(AriaRole.Link, new() { Name = "初期化", Exact = true }).EvaluateAsync<float>("el => parseFloat(getComputedStyle(el).fontSize)");
+            float logoutFont = await page.GetByRole(AriaRole.Button, new() { Name = "終了する", Exact = true }).EvaluateAsync<float>("el => parseFloat(getComputedStyle(el).fontSize)");
+            Assert.True(userMetaFont >= 16);
+            Assert.True(resetFont >= 16);
+            Assert.True(logoutFont >= 16);
         });
 
     [Fact]
