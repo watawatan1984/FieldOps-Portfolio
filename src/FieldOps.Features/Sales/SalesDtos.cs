@@ -77,26 +77,26 @@ public sealed class SalesEditInput
     public uint Version { get; set; }
 
     [Required]
-    [Display(Name = "Party")]
+    [Display(Name = "顧客")]
     public Guid PartyId { get; set; }
 
     [Required]
-    [Display(Name = "Site")]
+    [Display(Name = "現場")]
     public Guid SiteId { get; set; }
 
     [Required]
-    [Display(Name = "Sales owner")]
+    [Display(Name = "営業担当者")]
     public string OwnerUserId { get; set; } = string.Empty;
 
-    [Display(Name = "Assigned technician")]
+    [Display(Name = "現場担当者")]
     public string? AssignedUserId { get; set; }
 
     [Range(typeof(decimal), "0.01", "9999999999999999.99")]
-    [Display(Name = "Proposed amount")]
+    [Display(Name = "提案金額")]
     public decimal? ProposedAmount { get; set; }
 
     [DataType(DataType.Date)]
-    [Display(Name = "Expected close date")]
+    [Display(Name = "予定日")]
     public DateTime? ExpectedCloseDate { get; set; }
 }
 

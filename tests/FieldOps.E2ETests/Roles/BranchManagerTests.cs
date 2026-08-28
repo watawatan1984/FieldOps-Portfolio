@@ -33,6 +33,11 @@ public sealed class BranchManagerTests(FieldOpsWebFixture fixture)
             Assert.DoesNotContain("北部サービス支店", dashboardHtml, StringComparison.Ordinal);
             Assert.DoesNotContain("南部サービス支店", dashboardHtml, StringComparison.Ordinal);
             Assert.DoesNotContain("西部サービス支店", dashboardHtml, StringComparison.Ordinal);
+            await page.Locator("[data-nav='sales']").ClickAsync();
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "営業案件", Exact = true }))
+                .ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { Name = "次の行動を確認する" }).First)
+                .ToBeVisibleAsync();
             await page.Locator("[data-nav='customers']").ClickAsync();
             await new PartyPage(page).EditAsync("架空設備サービス 01", "架空設備サービス 01 Manager");
             await page.Locator("[data-nav='work-orders']").ClickAsync();

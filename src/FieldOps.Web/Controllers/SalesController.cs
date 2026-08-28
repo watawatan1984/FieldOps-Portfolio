@@ -98,7 +98,7 @@ public sealed class SalesController(
         }
         catch (DomainException exception)
         {
-            ModelState.AddModelError(string.Empty, exception.Message);
+            ModelState.AddModelError(string.Empty, ForSalesDisplayError(exception.Message));
             Response.StatusCode = StatusCodes.Status400BadRequest;
             return View("Edit", input);
         }
@@ -167,13 +167,13 @@ public sealed class SalesController(
             if (latest is null) return NotFound();
             ModelState.Remove(nameof(input.Version));
             input.Version = latest.Version;
-            ModelState.AddModelError(string.Empty, "This sales opportunity changed after you opened the form. Review the latest version and retry.");
+            ModelState.AddModelError(string.Empty, "ほかの利用者が先に更新しました。最新の内容を確認してください。");
             Response.StatusCode = StatusCodes.Status409Conflict;
             return View(input);
         }
         catch (DomainException exception)
         {
-            ModelState.AddModelError(string.Empty, exception.Message);
+            ModelState.AddModelError(string.Empty, ForSalesDisplayError(exception.Message));
             Response.StatusCode = StatusCodes.Status400BadRequest;
             return View(input);
         }
@@ -194,12 +194,12 @@ public sealed class SalesController(
         }
         catch (SalesConcurrencyException)
         {
-            ModelState.AddModelError(string.Empty, "This sales opportunity changed after you opened the page. Review the latest version and retry.");
+            ModelState.AddModelError(string.Empty, "ほかの利用者が先に更新しました。最新の内容を確認してください。");
             return await DetailsWithOutcomeAsync(id, StatusCodes.Status409Conflict, cancellationToken);
         }
         catch (DomainException exception)
         {
-            ModelState.AddModelError(string.Empty, exception.Message);
+            ModelState.AddModelError(string.Empty, ForSalesDisplayError(exception.Message));
             return await DetailsWithOutcomeAsync(id, StatusCodes.Status400BadRequest, cancellationToken);
         }
     }
@@ -230,9 +230,18 @@ public sealed class SalesController(
     {
         if (input.ProposedAmount.HasValue != input.ExpectedCloseDate.HasValue)
         {
-            ModelState.AddModelError(string.Empty, "Proposal amount and expected close date must be provided together.");
+            ModelState.AddModelError(string.Empty, "提案金額と予定日は両方入力してください。");
         }
     }
+
+    private static string ForSalesDisplayError(string message) => message switch
+    {
+        "Proposal amount and expected close date must be provided together." => "提案金額と予定日は両方入力してください。",
+        "An existing sales opportunity proposal cannot be cleared." => "登録済みの提案金額と予定日は空にできません。",
+        "Select a sales owner in this branch." => "この支店の営業担当者を選んでください。",
+        "Select a technician in this branch." => "この支店の現場担当者を選んでください。",
+        _ => message
+    };
 
     private async Task<IActionResult> DetailsWithOutcomeAsync(Guid id, int statusCode, CancellationToken cancellationToken)
     {

@@ -90,6 +90,40 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task SalesPagesPrioritizeJapaneseStatusAmountDueDateAndNextAction()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        SalesSeed seed = await SeedAsync(application);
+        Guid id = await CreateOpportunityAsync(
+            application,
+            seed,
+            "Fictional Proposal Prospect",
+            "Proposal Site",
+            seed.SalesUserId,
+            125000m,
+            new DateTime(2026, 9, 1),
+            SalesOpportunityStatus.Proposed);
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.SalesRepresentative);
+
+        using HttpResponseMessage list = await client.GetAsync($"/sales?branchId={seed.CentralBranchId}");
+        string listHtml = WebUtility.HtmlDecode(await list.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Contains("営業案件", listHtml);
+        Assert.Contains("提案済み", listHtml);
+        Assert.Contains("2026年9月1日", listHtml);
+        Assert.Contains("￥125,000", listHtml);
+        Assert.Contains("次の行動を確認する", listHtml);
+
+        using HttpResponseMessage details = await client.GetAsync($"/sales/{id}");
+        string detailsHtml = WebUtility.HtmlDecode(await details.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, details.StatusCode);
+        Assert.Contains("この案件を受注にする", detailsHtml);
+        Assert.DoesNotContain("Move to Won", detailsHtml);
+    }
+
+    [Fact]
     public async Task EditValidatesProposalAndReturnsRetryableConflictWithoutAudit()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
@@ -133,7 +167,7 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
             seed.CentralTechnicianUserId, 800m, "2026-09-30", staleVersion, token));
         string staleHtml = await stale.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
-        Assert.Contains("review the latest version and retry", staleHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ほかの利用者が先に更新しました。最新の内容を確認してください。", WebUtility.HtmlDecode(staleHtml));
         Assert.Equal(latestVersion.ToString(), GetInputValue(staleHtml, "Version"));
         await using AsyncServiceScope finalScope = application.Services.CreateAsyncScope();
         FieldOpsDbContext finalDb = finalScope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
@@ -152,10 +186,15 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
 
         using HttpResponseMessage details = await client.GetAsync($"/sales/{id}");
         string html = await details.Content.ReadAsStringAsync();
-        Assert.Contains("Move to Contacted", html);
-        Assert.Contains("Move to Lost", html);
-        Assert.Contains("Move to OnHold", html);
-        Assert.DoesNotContain("Move to Won", html);
+        string decodedHtml = WebUtility.HtmlDecode(html);
+        Assert.Contains("営業案件", decodedHtml);
+        Assert.Contains("新規", decodedHtml);
+        Assert.Contains("2026年9月15日", decodedHtml);
+        Assert.Contains("￥900", decodedHtml);
+        Assert.Contains("この案件を連絡済みにする", decodedHtml);
+        Assert.Contains("この案件を失注にする", decodedHtml);
+        Assert.Contains("この案件を保留にする", decodedHtml);
+        Assert.DoesNotContain("Move to Won", decodedHtml);
         string token = ExtractAntiforgeryToken(html);
         uint version = await GetVersionAsync(application, id);
         using HttpResponseMessage invalid = await client.PostAsync($"/sales/{id}/transition", TransitionForm(version, SalesOpportunityStatus.Won, token));
@@ -183,7 +222,7 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
             TransitionForm(staleVersion, SalesOpportunityStatus.SurveyScheduled, token));
         string staleHtml = await stale.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
-        Assert.Contains("review the latest version and retry", staleHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ほかの利用者が先に更新しました。最新の内容を確認してください。", WebUtility.HtmlDecode(staleHtml));
         Assert.Contains($"value=\"{latestVersion}\"", staleHtml);
         Assert.Equal(1, await dbContext.AuditEntries.CountAsync(item => item.AggregateId == id));
     }
@@ -237,8 +276,8 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage techDetails = await technician.GetAsync($"/sales/{assignedFieldId}");
         string techDetailsHtml = await techDetails.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, techDetails.StatusCode);
-        Assert.DoesNotContain("Edit opportunity", techDetailsHtml);
-        Assert.DoesNotContain("Available actions", techDetailsHtml);
+        Assert.DoesNotContain("営業案件を編集する", techDetailsHtml);
+        Assert.DoesNotContain("次の行動", techDetailsHtml);
         Assert.Equal(HttpStatusCode.Forbidden, (await technician.GetAsync($"/sales/{unassignedFieldId}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await technician.GetAsync($"/sales/{assignedFieldId}/edit")).StatusCode);
 
@@ -268,27 +307,29 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         using HttpClient sales = CreateClient(application);
         await LoginAsAsync(sales, DemoRoleNames.SalesRepresentative);
         string salesHtml = await sales.GetStringAsync($"/sales/{centralId}");
-        Assert.DoesNotContain("Audit history", salesHtml);
+        Assert.DoesNotContain("詳しい変更履歴を見る", salesHtml);
         Assert.DoesNotContain("OwnerUserId", salesHtml);
 
         using HttpClient technician = CreateClient(application);
         await LoginAsAsync(technician, DemoRoleNames.FieldTechnician);
         string technicianHtml = await technician.GetStringAsync($"/sales/{fieldId}");
-        Assert.DoesNotContain("Audit history", technicianHtml);
+        Assert.DoesNotContain("詳しい変更履歴を見る", technicianHtml);
         Assert.DoesNotContain("OwnerUserId", technicianHtml);
 
         using HttpClient manager = CreateClient(application);
         await LoginAsAsync(manager, DemoRoleNames.BranchManager);
         string managerHtml = await manager.GetStringAsync($"/sales/{centralId}");
-        Assert.Contains("Audit history", managerHtml);
-        Assert.Contains("OwnerUserId", managerHtml);
+        Assert.Contains("詳しい変更履歴を見る", managerHtml);
+        Assert.Contains("営業担当者", managerHtml);
+        Assert.DoesNotContain("OwnerUserId", managerHtml);
         Assert.Equal(HttpStatusCode.Forbidden, (await manager.GetAsync($"/sales/{fieldId}")).StatusCode);
 
         using HttpClient administrator = CreateClient(application);
         await LoginAsAsync(administrator, DemoRoleNames.SystemAdministrator);
         string administratorHtml = await administrator.GetStringAsync($"/sales/{fieldId}");
-        Assert.Contains("Audit history", administratorHtml);
-        Assert.Contains("OwnerUserId", administratorHtml);
+        Assert.Contains("詳しい変更履歴を見る", administratorHtml);
+        Assert.Contains("営業担当者", administratorHtml);
+        Assert.DoesNotContain("OwnerUserId", administratorHtml);
     }
 
     [Fact]
@@ -325,8 +366,8 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         string body = await response.Content.ReadAsStringAsync();
-        Assert.DoesNotContain("Available actions", body);
-        Assert.DoesNotContain("Edit opportunity", body);
+        Assert.DoesNotContain("次の行動", body);
+        Assert.DoesNotContain("営業案件を編集する", body);
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         SalesOpportunity persisted = await dbContext.SalesOpportunities.SingleAsync(item => item.Id == id);
@@ -427,7 +468,7 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
 
         string html = await response.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("proposal cannot be cleared", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("登録済みの提案金額と予定日は空にできません。", WebUtility.HtmlDecode(html));
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         SalesOpportunity persisted = await dbContext.SalesOpportunities.SingleAsync(item => item.Id == id);
@@ -457,7 +498,7 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage allBranches = await administrator.GetAsync("/sales");
         string allHtml = await allBranches.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, allBranches.StatusCode);
-        Assert.Contains("All branches", allHtml);
+        Assert.Contains("すべての支店", allHtml);
         Assert.Contains("id=\"branch-filter\"", allHtml);
         Assert.Contains($"value=\"{seed.CentralBranchId}\"", allHtml);
         Assert.Contains($"value=\"{seed.FieldBranchId}\"", allHtml);
@@ -633,7 +674,7 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         using HttpClient sales = CreateClient(application);
         await LoginAsAsync(sales, DemoRoleNames.SalesRepresentative);
         string detailsHtml = await sales.GetStringAsync($"/sales/{id}");
-        Assert.DoesNotContain("Available actions", detailsHtml);
+        Assert.DoesNotContain("次の行動", detailsHtml);
         Assert.DoesNotContain("Move to", detailsHtml);
         string token = await GetAntiforgeryTokenAsync(sales, $"/sales/{id}/edit");
         uint version = await GetVersionAsync(application, id);
@@ -844,6 +885,10 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
     {
         SalesOpportunityStatus.New => [],
         SalesOpportunityStatus.Contacted => [SalesOpportunityStatus.Contacted],
+        SalesOpportunityStatus.SurveyScheduled => [SalesOpportunityStatus.Contacted, SalesOpportunityStatus.SurveyScheduled],
+        SalesOpportunityStatus.Quoting => [SalesOpportunityStatus.Contacted, SalesOpportunityStatus.SurveyScheduled, SalesOpportunityStatus.Quoting],
+        SalesOpportunityStatus.Proposed => [SalesOpportunityStatus.Contacted, SalesOpportunityStatus.SurveyScheduled, SalesOpportunityStatus.Quoting, SalesOpportunityStatus.Proposed],
+        SalesOpportunityStatus.Won => [SalesOpportunityStatus.Contacted, SalesOpportunityStatus.SurveyScheduled, SalesOpportunityStatus.Quoting, SalesOpportunityStatus.Proposed, SalesOpportunityStatus.Won],
         SalesOpportunityStatus.Lost => [SalesOpportunityStatus.Lost],
         SalesOpportunityStatus.OnHold => [SalesOpportunityStatus.OnHold],
         _ => throw new ArgumentOutOfRangeException(nameof(status))

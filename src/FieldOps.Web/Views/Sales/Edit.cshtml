@@ -3,27 +3,91 @@
 @{
     var options = (SalesEditorOptions)ViewData["EditorOptions"]!;
     bool isCreate = (bool)(ViewData["IsCreate"] ?? false);
-    ViewData["Title"] = isCreate ? "Create sales opportunity" : "Edit sales opportunity";
+    ViewData["Title"] = isCreate ? "営業案件を登録する" : "営業案件を編集する";
 }
 
-<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">Sales</a></li><li class="breadcrumb-item active" aria-current="page">@(isCreate ? "Create" : "Edit")</li></ol></nav>
-<h1>@(isCreate ? "Create sales opportunity" : "Edit sales opportunity")</h1>
-<p class="text-body-secondary">Branch scope: <strong>@options.BranchName</strong></p>
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">営業案件</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@(isCreate ? "登録" : "編集")</li>
+    </ol>
+</nav>
+
+<h1>@(isCreate ? "営業案件を登録する" : "営業案件を編集する")</h1>
+<p class="text-body-secondary">担当支店: <strong>@options.BranchName</strong></p>
+
 <form asp-action="@(isCreate ? "Create" : "Edit")" asp-route-id="@(isCreate ? null : Model.Id)" method="post">
     <div asp-validation-summary="All" class="text-danger" role="alert" tabindex="-1"></div>
-    <input asp-for="Id" type="hidden" /><input asp-for="BranchId" type="hidden" /><input asp-for="Version" type="hidden" />
+    <input asp-for="Id" type="hidden" />
+    <input asp-for="BranchId" type="hidden" />
+    <input asp-for="Version" type="hidden" />
     @if (isCreate)
     {
-        <div class="mb-3"><label asp-for="PartyId" class="form-label"></label><select asp-for="PartyId" class="form-select"><option value="">Select a party</option>@foreach (var party in options.PartySites.GroupBy(item => new { item.PartyId, item.PartyName }).Select(group => group.Key)) { <option value="@party.PartyId">@party.PartyName</option> }</select><span asp-validation-for="PartyId" class="text-danger"></span></div>
-        <div class="mb-3"><label asp-for="SiteId" class="form-label"></label><select asp-for="SiteId" class="form-select"><option value="">Select a site</option>@foreach (var item in options.PartySites) { <option value="@item.SiteId">@item.PartyName — @item.SiteName</option> }</select><span asp-validation-for="SiteId" class="text-danger"></span></div>
+        <div class="mb-3">
+            <label asp-for="PartyId" class="form-label"></label>
+            <select asp-for="PartyId" class="form-select">
+                <option value="">顧客を選んでください</option>
+                @foreach (var party in options.PartySites.GroupBy(item => new { item.PartyId, item.PartyName }).Select(group => group.Key))
+                {
+                    <option value="@party.PartyId">@party.PartyName</option>
+                }
+            </select>
+            <span asp-validation-for="PartyId" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="SiteId" class="form-label"></label>
+            <select asp-for="SiteId" class="form-select">
+                <option value="">現場を選んでください</option>
+                @foreach (var item in options.PartySites)
+                {
+                    <option value="@item.SiteId">@item.PartyName - @item.SiteName</option>
+                }
+            </select>
+            <span asp-validation-for="SiteId" class="text-danger"></span>
+        </div>
     }
     else
     {
-        <input asp-for="PartyId" type="hidden" /><input asp-for="SiteId" type="hidden" />
+        <input asp-for="PartyId" type="hidden" />
+        <input asp-for="SiteId" type="hidden" />
     }
-    <div class="mb-3"><label asp-for="OwnerUserId" class="form-label"></label><select asp-for="OwnerUserId" class="form-select"><option value="">Select an owner</option>@foreach (var owner in options.Owners) { <option value="@owner.Id">@owner.DisplayName</option> }</select><span asp-validation-for="OwnerUserId" class="text-danger"></span></div>
-    <div class="mb-3"><label asp-for="AssignedUserId" class="form-label"></label><select asp-for="AssignedUserId" class="form-select"><option value="">No technician assigned</option>@foreach (var technician in options.Technicians) { <option value="@technician.Id">@technician.DisplayName</option> }</select><span asp-validation-for="AssignedUserId" class="text-danger"></span></div>
-    <div class="row"><div class="col-md-6 mb-3"><label asp-for="ProposedAmount" class="form-label"></label><input asp-for="ProposedAmount" class="form-control" step="0.01" /><span asp-validation-for="ProposedAmount" class="text-danger"></span></div><div class="col-md-6 mb-3"><label asp-for="ExpectedCloseDate" class="form-label"></label><input asp-for="ExpectedCloseDate" class="form-control" type="date" /><span asp-validation-for="ExpectedCloseDate" class="text-danger"></span></div></div>
-    <button type="submit" class="btn btn-primary">@(isCreate ? "Create opportunity" : "Save changes")</button><a asp-action="Index" asp-route-branchId="@Model.BranchId" class="btn btn-link">Cancel</a>
+    <div class="mb-3">
+        <label asp-for="OwnerUserId" class="form-label"></label>
+        <select asp-for="OwnerUserId" class="form-select">
+            <option value="">営業担当者を選んでください</option>
+            @foreach (var owner in options.Owners)
+            {
+                <option value="@owner.Id">@owner.DisplayName</option>
+            }
+        </select>
+        <span asp-validation-for="OwnerUserId" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="AssignedUserId" class="form-label"></label>
+        <select asp-for="AssignedUserId" class="form-select">
+            <option value="">現場担当者は未設定</option>
+            @foreach (var technician in options.Technicians)
+            {
+                <option value="@technician.Id">@technician.DisplayName</option>
+            }
+        </select>
+        <span asp-validation-for="AssignedUserId" class="text-danger"></span>
+    </div>
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label asp-for="ProposedAmount" class="form-label"></label>
+            <input asp-for="ProposedAmount" class="form-control" step="0.01" />
+            <span asp-validation-for="ProposedAmount" class="text-danger"></span>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label asp-for="ExpectedCloseDate" class="form-label"></label>
+            <input asp-for="ExpectedCloseDate" class="form-control" type="date" />
+            <span asp-validation-for="ExpectedCloseDate" class="text-danger"></span>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">@(isCreate ? "営業案件を登録する" : "変更を保存する")</button>
+    <a asp-action="Index" asp-route-branchId="@Model.BranchId" class="btn btn-link">やめる</a>
 </form>
+
 @section Scripts { <partial name="_ValidationScriptsPartial" /> }

@@ -2,23 +2,36 @@
 @using FieldOps.Domain.Enums
 @using FieldOps.Infrastructure.Identity
 @{
-    ViewData["Title"] = "Sales opportunities";
+    ViewData["Title"] = "営業案件";
     bool canCreate = !User.IsInRole(DemoRoleNames.FieldTechnician) && Model.Filters.BranchId != Guid.Empty;
 }
 
-<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item active" aria-current="page">Sales</li></ol></nav>
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div><h1>Sales opportunities</h1><p class="text-body-secondary mb-0">Branch scope: <strong>@Model.BranchName</strong></p></div>
-    @if (canCreate) { <a class="btn btn-primary" asp-action="Create" asp-route-branchId="@Model.Filters.BranchId">Create opportunity</a> }
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item active" aria-current="page">営業案件</li>
+    </ol>
+</nav>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h1>営業案件</h1>
+        <p class="page-intro mb-1">期限と次の行動を先に確認できます。</p>
+        <p class="text-body-secondary mb-0">担当支店: <strong>@Model.BranchName</strong></p>
+    </div>
+    @if (canCreate)
+    {
+        <a class="btn btn-primary" asp-action="Create" asp-route-branchId="@Model.Filters.BranchId">新しい営業案件を登録する</a>
+    }
 </div>
 
 <form method="get" class="row g-2 mb-4" role="search">
     @if (Model.CanSelectBranch)
     {
         <div class="col-md-4">
-            <label for="branch-filter" class="form-label">Branch</label>
+            <label for="branch-filter" class="form-label">支店</label>
             <select id="branch-filter" class="form-select" name="branchId">
-                <option value="">All branches</option>
+                <option value="">すべての支店</option>
                 @foreach (var branch in Model.Branches)
                 {
                     <option value="@branch.Id" selected="@(branch.Id == Model.Filters.BranchId)">@branch.Name</option>
@@ -30,28 +43,135 @@
     {
         <input type="hidden" name="branchId" value="@Model.Filters.BranchId" />
     }
-    <div class="col-md-4"><label for="sales-search" class="form-label">Party or site</label><input id="sales-search" class="form-control" name="search" value="@Model.Filters.Search" /></div>
-    <div class="col-md-4"><label for="owner" class="form-label">Owner</label><select id="owner" class="form-select" name="ownerUserId"><option value="">All owners</option>@foreach (var owner in Model.Owners) { <option value="@owner.Id" selected="@(owner.Id == Model.Filters.OwnerUserId)">@owner.DisplayName</option> }</select></div>
-    <div class="col-md-4"><label for="status" class="form-label">Status</label><select id="status" class="form-select" name="status"><option value="">All statuses</option>@foreach (SalesOpportunityStatus status in Enum.GetValues<SalesOpportunityStatus>()) { <option value="@status" selected="@(status == Model.Filters.Status)">@status</option> }</select></div>
-    <div class="col-md-3"><label for="close-from" class="form-label">Expected close from</label><input id="close-from" type="date" class="form-control" name="expectedCloseFrom" value="@Model.Filters.ExpectedCloseFrom?.ToString("yyyy-MM-dd")" /></div>
-    <div class="col-md-3"><label for="close-to" class="form-label">Expected close to</label><input id="close-to" type="date" class="form-control" name="expectedCloseTo" value="@Model.Filters.ExpectedCloseTo?.ToString("yyyy-MM-dd")" /></div>
-    <div class="col-md-3"><label for="amount-min" class="form-label">Minimum amount</label><input id="amount-min" type="number" step="0.01" class="form-control" name="minimumAmount" value="@Model.Filters.MinimumAmount" /></div>
-    <div class="col-md-3"><label for="amount-max" class="form-label">Maximum amount</label><input id="amount-max" type="number" step="0.01" class="form-control" name="maximumAmount" value="@Model.Filters.MaximumAmount" /></div>
-    <div class="col-12"><button class="btn btn-primary" type="submit">Filter</button></div>
+    <div class="col-md-4">
+        <label for="sales-search" class="form-label">顧客名・現場名で検索</label>
+        <input id="sales-search" class="form-control" name="search" value="@Model.Filters.Search" />
+    </div>
+    <div class="col-md-4">
+        <label for="owner" class="form-label">営業担当者</label>
+        <select id="owner" class="form-select" name="ownerUserId">
+            <option value="">すべての営業担当者</option>
+            @foreach (var owner in Model.Owners)
+            {
+                <option value="@owner.Id" selected="@(owner.Id == Model.Filters.OwnerUserId)">@owner.DisplayName</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label for="status" class="form-label">状態</label>
+        <select id="status" class="form-select" name="status">
+            <option value="">すべての状態</option>
+            @foreach (SalesOpportunityStatus status in Enum.GetValues<SalesOpportunityStatus>())
+            {
+                <option value="@status" selected="@(status == Model.Filters.Status)">@UiDisplayText.ForSalesStatus(status)</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label for="close-from" class="form-label">予定日（開始）</label>
+        <input id="close-from" type="date" class="form-control" name="expectedCloseFrom" value="@Model.Filters.ExpectedCloseFrom?.ToString("yyyy-MM-dd")" />
+    </div>
+    <div class="col-md-4">
+        <label for="close-to" class="form-label">予定日（終了）</label>
+        <input id="close-to" type="date" class="form-control" name="expectedCloseTo" value="@Model.Filters.ExpectedCloseTo?.ToString("yyyy-MM-dd")" />
+    </div>
+    <div class="col-md-3">
+        <label for="amount-min" class="form-label">提案金額（下限）</label>
+        <input id="amount-min" type="number" step="0.01" class="form-control" name="minimumAmount" value="@Model.Filters.MinimumAmount" />
+    </div>
+    <div class="col-md-3">
+        <label for="amount-max" class="form-label">提案金額（上限）</label>
+        <input id="amount-max" type="number" step="0.01" class="form-control" name="maximumAmount" value="@Model.Filters.MaximumAmount" />
+    </div>
+    <div class="col-12 align-self-end">
+        <button class="btn btn-primary" type="submit">この条件で探す</button>
+    </div>
 </form>
 
 @if (Model.Items.Count == 0)
 {
-    <div class="alert alert-info" role="status">No sales opportunities match these filters.</div>
+    <p class="app-empty-state" role="status">条件に合う営業案件はまだありません。</p>
 }
 else
 {
-    <div class="table-responsive"><table class="table align-middle"><thead><tr><th scope="col">Party</th><th scope="col">Site</th><th scope="col">Branch</th><th scope="col">Owner</th><th scope="col">Status</th><th scope="col">Amount</th><th scope="col">Expected close</th></tr></thead><tbody>
+    <div class="responsive-records d-none d-xl-block">
+        <table class="table align-middle bg-white">
+            <thead>
+                <tr>
+                    <th scope="col">状態</th>
+                    <th scope="col">予定日</th>
+                    <th scope="col">顧客</th>
+                    <th scope="col">営業担当者</th>
+                    <th scope="col">提案金額</th>
+                    <th scope="col">次の操作</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var opportunity in Model.Items)
+            {
+                <tr>
+                    <td><span class="badge text-bg-primary">@UiDisplayText.ForSalesStatus(opportunity.Status)</span></td>
+                    <td>@FormatDate(opportunity.ExpectedCloseDate)</td>
+                    <th scope="row">
+                        <a asp-action="Details" asp-route-id="@opportunity.Id">@opportunity.PartyName</a>
+                        <div class="small text-body-secondary">@opportunity.SiteName · @opportunity.BranchName</div>
+                    </th>
+                    <td>@opportunity.OwnerName</td>
+                    <td>@FormatAmount(opportunity.ProposedAmount)</td>
+                    <td><a class="btn btn-outline-primary btn-sm" asp-action="Details" asp-route-id="@opportunity.Id">@NextAction(opportunity.Status)</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <div class="row g-3 d-xl-none">
     @foreach (var opportunity in Model.Items)
     {
-        <tr><th scope="row"><a asp-action="Details" asp-route-id="@opportunity.Id">@opportunity.PartyName</a></th><td>@opportunity.SiteName</td><td>@opportunity.BranchName</td><td>@opportunity.OwnerName</td><td>@opportunity.Status</td><td>@(opportunity.ProposedAmount?.ToString("C") ?? "Not set")</td><td>@(opportunity.ExpectedCloseDate?.ToString("yyyy-MM-dd") ?? "Not set")</td></tr>
+        <div class="col-12 col-md-6">
+            <article class="card task-card h-100">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                        <span class="badge text-bg-primary">@UiDisplayText.ForSalesStatus(opportunity.Status)</span>
+                        <span class="text-body-secondary">@FormatDate(opportunity.ExpectedCloseDate)</span>
+                    </div>
+                    <h2 class="h5 card-title">@opportunity.PartyName</h2>
+                    <p class="mb-1">現場: @opportunity.SiteName</p>
+                    <p class="mb-1">営業担当者: @opportunity.OwnerName</p>
+                    <p class="mb-3">提案金額: @FormatAmount(opportunity.ProposedAmount)</p>
+                    <a class="btn btn-outline-primary" asp-action="Details" asp-route-id="@opportunity.Id">@NextAction(opportunity.Status)</a>
+                </div>
+            </article>
+        </div>
     }
-    </tbody></table></div>
+    </div>
 }
 
-<nav aria-label="Sales opportunity pages"><ul class="pagination">@for (int pageNumber = 1; pageNumber <= Model.TotalPages; pageNumber++) { <li class="page-item @(pageNumber == Model.Page ? "active" : null)"><a class="page-link" href="@Url.Action("Index", new { branchId = Model.Filters.BranchId, ownerUserId = Model.Filters.OwnerUserId, status = Model.Filters.Status, expectedCloseFrom = Model.Filters.ExpectedCloseFrom?.ToString("yyyy-MM-dd"), expectedCloseTo = Model.Filters.ExpectedCloseTo?.ToString("yyyy-MM-dd"), minimumAmount = Model.Filters.MinimumAmount, maximumAmount = Model.Filters.MaximumAmount, search = Model.Filters.Search, page = pageNumber, pageSize = Model.PageSize })">@pageNumber</a></li> }</ul></nav>
+<nav aria-label="営業案件のページ" class="d-flex flex-wrap align-items-center gap-2 mt-3">
+    <span class="text-body-secondary">全@(Model.TotalCount)件</span>
+    <ul class="pagination mb-0">
+        @for (int pageNumber = 1; pageNumber <= Model.TotalPages; pageNumber++)
+        {
+            <li class="page-item @(pageNumber == Model.Page ? "active" : null)">
+                <a class="page-link" href="@Url.Action("Index", new { branchId = Model.Filters.BranchId, ownerUserId = Model.Filters.OwnerUserId, status = Model.Filters.Status, expectedCloseFrom = Model.Filters.ExpectedCloseFrom?.ToString("yyyy-MM-dd"), expectedCloseTo = Model.Filters.ExpectedCloseTo?.ToString("yyyy-MM-dd"), minimumAmount = Model.Filters.MinimumAmount, maximumAmount = Model.Filters.MaximumAmount, search = Model.Filters.Search, page = pageNumber, pageSize = Model.PageSize })">@pageNumber</a>
+            </li>
+        }
+    </ul>
+</nav>
+
+@functions {
+    private static readonly System.Globalization.CultureInfo JapaneseCulture = System.Globalization.CultureInfo.GetCultureInfo("ja-JP");
+
+    private static string FormatAmount(decimal? amount) =>
+        amount?.ToString("C0", JapaneseCulture) ?? "未入力";
+
+    private static string FormatDate(DateTime? date) =>
+        date?.ToString("yyyy年M月d日", JapaneseCulture) ?? "未入力";
+
+    private static string NextAction(SalesOpportunityStatus status) => status switch
+    {
+        SalesOpportunityStatus.Won => "作業予定を作成する",
+        SalesOpportunityStatus.Lost => "失注内容を確認する",
+        SalesOpportunityStatus.OnHold => "保留内容を確認する",
+        _ => "次の行動を確認する"
+    };
+}

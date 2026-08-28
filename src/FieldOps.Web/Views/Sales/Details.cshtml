@@ -6,28 +6,130 @@
 @{
     ViewData["Title"] = Model.PartyName;
 }
-<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">Sales</a></li><li class="breadcrumb-item active" aria-current="page">@Model.PartyName</li></ol></nav>
+
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">営業案件</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@Model.PartyName</li>
+    </ol>
+</nav>
+
 <div asp-validation-summary="All" class="text-danger" role="alert" tabindex="-1"></div>
-<div class="d-flex justify-content-between align-items-start"><div><h1>@Model.PartyName</h1><p class="text-body-secondary">@Model.SiteName · @Model.BranchName</p></div><span class="badge text-bg-primary fs-6">@Model.Status</span></div>
-<dl class="row"><dt class="col-sm-3">Sales owner</dt><dd class="col-sm-9">@Model.OwnerName</dd><dt class="col-sm-3">Assigned technician</dt><dd class="col-sm-9">@(Model.AssignedUserName ?? "Not assigned")</dd><dt class="col-sm-3">Proposed amount</dt><dd class="col-sm-9">@(Model.ProposedAmount?.ToString("C") ?? "Not set")</dd><dt class="col-sm-3">Expected close date</dt><dd class="col-sm-9">@(Model.ExpectedCloseDate?.ToString("yyyy-MM-dd") ?? "Not set")</dd></dl>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h1>@Model.PartyName</h1>
+        <p class="text-body-secondary mb-1">@Model.SiteName · @Model.BranchName</p>
+        <p class="mb-0">@SummaryText()</p>
+    </div>
+    <span class="badge text-bg-primary fs-6">@UiDisplayText.ForSalesStatus(Model.Status)</span>
+</div>
+
+<section class="card task-card mb-3" aria-labelledby="sales-summary-heading">
+    <div class="card-body">
+        <h2 id="sales-summary-heading" class="h5">営業案件の要点</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-3">予定日</dt>
+            <dd class="col-sm-9">@FormatDate(Model.ExpectedCloseDate)</dd>
+            <dt class="col-sm-3">提案金額</dt>
+            <dd class="col-sm-9">@FormatAmount(Model.ProposedAmount)</dd>
+            <dt class="col-sm-3">営業担当者</dt>
+            <dd class="col-sm-9">@Model.OwnerName</dd>
+            <dt class="col-sm-3">現場担当者</dt>
+            <dd class="col-sm-9">@(Model.AssignedUserName ?? "未設定")</dd>
+        </dl>
+    </div>
+</section>
+
 @if (Model.CanManage)
 {
-    <p><a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id">Edit opportunity</a></p>
+    <p><a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id">営業案件を編集する</a></p>
     @if (Model.AllowedTransitions.Count > 0)
     {
-        <section aria-labelledby="transitions-heading"><h2 id="transitions-heading" class="h4">Available actions</h2><div class="d-flex flex-wrap gap-2">@foreach (var status in Model.AllowedTransitions) { <form asp-action="Transition" asp-route-id="@Model.Id" method="post"><input name="Version" type="hidden" value="@Model.Version" /><input name="NextStatus" type="hidden" value="@status" /><button type="submit" class="btn btn-outline-primary">Move to @status</button></form> }</div></section>
+        <section aria-labelledby="transitions-heading" class="mb-3">
+            <h2 id="transitions-heading" class="h4">次の行動</h2>
+            <div class="d-flex flex-wrap gap-2">
+                @foreach (var status in Model.AllowedTransitions)
+                {
+                    bool needsConfirmation = status is SalesOpportunityStatus.Lost or SalesOpportunityStatus.OnHold;
+                    string statusLabel = UiDisplayText.ForSalesStatus(status);
+                    <form asp-action="Transition" asp-route-id="@Model.Id" method="post">
+                        <input name="Version" type="hidden" value="@Model.Version" />
+                        <input name="NextStatus" type="hidden" value="@status" />
+                        @if (needsConfirmation)
+                        {
+                            <button type="submit"
+                                    class="btn btn-outline-primary"
+                                    data-confirm-action="true"
+                                    data-confirm-title="営業案件の状態を変更しますか"
+                                    data-confirm-target="@Model.PartyName"
+                                    data-confirm-message="この案件を@(statusLabel)にします。"
+                                    data-confirm-impact="変更後も監査履歴に記録され、画面の状態が更新されます。">この案件を@(statusLabel)にする</button>
+                        }
+                        else
+                        {
+                            <button type="submit"
+                                    class="btn @(status == SalesOpportunityStatus.Won ? "btn-success" : "btn-outline-primary")">この案件を@(statusLabel)にする</button>
+                        }
+                    </form>
+                }
+            </div>
+        </section>
     }
 }
+
 @if (Model.Status == SalesOpportunityStatus.Won &&
     (await AuthorizationService.AuthorizeAsync(User, Policies.ManageWorkOrders)).Succeeded)
 {
     <form action="/work-orders/from-opportunity/@Model.Id" method="post" class="mb-3">
         @Html.AntiForgeryToken()
-        <button type="submit" class="btn btn-success">Create work order</button>
+        <button type="submit" class="btn btn-success">この受注から作業予定を作る</button>
     </form>
 }
+
 @if (Model.CanViewAudit)
 {
-    <hr />
-    <section aria-labelledby="audit-heading"><h2 id="audit-heading" class="h4">Audit history</h2>@if (Model.AuditEntries.Count == 0) { <p>No audit entries recorded.</p> } else { <ol>@foreach (var audit in Model.AuditEntries) { <li><time datetime="@audit.OccurredAtUtc.ToString("O")">@audit.OccurredAtUtc.ToString("u")</time> — @audit.Action (@audit.Outcome) — fields: @(string.IsNullOrEmpty(audit.ChangedFields) ? "none" : audit.ChangedFields)</li> }</ol> }</section>
+    <details class="details-disclosure mt-4">
+        <summary>詳しい変更履歴を見る</summary>
+        @if (Model.AuditEntries.Count == 0)
+        {
+            <p class="mb-0">変更履歴はまだありません。</p>
+        }
+        else
+        {
+            <ol class="mb-0">
+                @foreach (var audit in Model.AuditEntries)
+                {
+                    <li>
+                        <time datetime="@audit.OccurredAtUtc.ToString("O")">@JapanTimeFormatter.FormatUtc(audit.OccurredAtUtc)</time>
+                        <span> @UiDisplayText.ForAuditAction(audit.Action)（@UiDisplayText.ForAuditOutcome(audit.Outcome)）</span>
+                        <span> 変更項目: @(string.IsNullOrEmpty(audit.ChangedFields) ? "なし" : UiDisplayText.ForAuditFields(audit.ChangedFields))</span>
+                    </li>
+                }
+            </ol>
+        }
+    </details>
+}
+
+@functions {
+    private static readonly System.Globalization.CultureInfo JapaneseCulture = System.Globalization.CultureInfo.GetCultureInfo("ja-JP");
+
+    private static string FormatAmount(decimal? amount) =>
+        amount?.ToString("C0", JapaneseCulture) ?? "未入力";
+
+    private static string FormatDate(DateTime? date) =>
+        date?.ToString("yyyy年M月d日", JapaneseCulture) ?? "未入力";
+
+    private string SummaryText()
+    {
+        string status = UiDisplayText.ForSalesStatus(Model.Status);
+        string date = FormatDate(Model.ExpectedCloseDate);
+        if (Model.CanManage && Model.AllowedTransitions.Count > 0)
+        {
+            return $"営業案件は{status}です。予定日は{date}、次の行動を下から選びます。";
+        }
+
+        return $"営業案件は{status}です。予定日は{date}です。";
+    }
 }
