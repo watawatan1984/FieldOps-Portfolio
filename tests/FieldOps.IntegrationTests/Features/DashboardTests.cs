@@ -361,15 +361,17 @@ public sealed class DashboardTests(PostgresFixture postgres)
 
             string customerHref = ExtractNavigationHref(dashboard, "customers");
             (HttpStatusCode CustomerStatus, string CustomerHtml) = await GetFinalResponseAsync(client, customerHref);
+            string decodedCustomerHtml = WebUtility.HtmlDecode(CustomerHtml);
             Assert.Equal(HttpStatusCode.OK, CustomerStatus);
-            Assert.Contains("Fictional Central Nav Customer", CustomerHtml, StringComparison.Ordinal);
-            Assert.DoesNotContain("Fictional Field Nav Customer", CustomerHtml, StringComparison.Ordinal);
+            Assert.Contains("架空中央支店 顧客", decodedCustomerHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("架空現場支店 顧客", decodedCustomerHtml, StringComparison.Ordinal);
 
             string partnerHref = ExtractNavigationHref(dashboard, "business-partners");
             (HttpStatusCode PartnerStatus, string PartnerHtml) = await GetFinalResponseAsync(client, partnerHref);
+            string decodedPartnerHtml = WebUtility.HtmlDecode(PartnerHtml);
             Assert.Equal(HttpStatusCode.OK, PartnerStatus);
-            Assert.Contains("Fictional Central Nav Partner", PartnerHtml, StringComparison.Ordinal);
-            Assert.DoesNotContain("Fictional Field Nav Partner", PartnerHtml, StringComparison.Ordinal);
+            Assert.Contains("架空中央支店 協力会社", decodedPartnerHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("架空現場支店 協力会社", decodedPartnerHtml, StringComparison.Ordinal);
         }
 
         using HttpClient technician = CreateClient(application);
@@ -543,13 +545,13 @@ public sealed class DashboardTests(PostgresFixture postgres)
         FieldOpsDbContext db = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Branch central = await db.Branches.SingleAsync(branch => branch.Name == "中央サービス支店");
         Branch field = await db.Branches.SingleAsync(branch => branch.Name == "現場サービス支店");
-        Party centralCustomer = CreateParty(central, "Fictional Central Nav Customer");
+        Party centralCustomer = CreateParty(central, "架空中央支店 顧客");
         centralCustomer.AddRole(PartyRoleType.Customer);
-        Party fieldCustomer = CreateParty(field, "Fictional Field Nav Customer");
+        Party fieldCustomer = CreateParty(field, "架空現場支店 顧客");
         fieldCustomer.AddRole(PartyRoleType.Customer);
-        Party centralPartner = CreateParty(central, "Fictional Central Nav Partner");
+        Party centralPartner = CreateParty(central, "架空中央支店 協力会社");
         centralPartner.AddRole(PartyRoleType.BusinessPartner);
-        Party fieldPartner = CreateParty(field, "Fictional Field Nav Partner");
+        Party fieldPartner = CreateParty(field, "架空現場支店 協力会社");
         fieldPartner.AddRole(PartyRoleType.BusinessPartner);
         db.Parties.AddRange(centralCustomer, fieldCustomer, centralPartner, fieldPartner);
         await db.SaveChangesAsync();

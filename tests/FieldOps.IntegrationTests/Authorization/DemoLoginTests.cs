@@ -75,13 +75,14 @@ public sealed class DemoLoginTests(PostgresFixture postgres)
 
         using HttpResponseMessage response = await client.GetAsync("/demo-login");
         string html = await response.Content.ReadAsStringAsync();
+        string decodedHtml = WebUtility.HtmlDecode(html);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("担当する仕事を選んでください", html, StringComparison.Ordinal);
-        Assert.Contains("システム管理者", html, StringComparison.Ordinal);
-        Assert.Contains("支店管理者", html, StringComparison.Ordinal);
-        Assert.Contains("営業担当者", html, StringComparison.Ordinal);
-        Assert.Contains("現場担当者", html, StringComparison.Ordinal);
+        Assert.Contains("システム管理者", decodedHtml, StringComparison.Ordinal);
+        Assert.Contains("支店管理者", decodedHtml, StringComparison.Ordinal);
+        Assert.Contains("営業担当者", decodedHtml, StringComparison.Ordinal);
+        Assert.Contains("現場担当者", decodedHtml, StringComparison.Ordinal);
         Assert.Contains("架空のデモデータ", html, StringComparison.Ordinal);
         Assert.DoesNotContain("Continue as", html, StringComparison.Ordinal);
         Assert.DoesNotContain("type=\"password\"", html, StringComparison.OrdinalIgnoreCase);

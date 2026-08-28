@@ -203,9 +203,10 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         await LoginAsAsync(client, DemoRoleNames.SalesRepresentative);
         using HttpResponseMessage salesIndex = await client.GetAsync($"/work-orders?branchId={seed.BranchId}");
         string salesHtml = await salesIndex.Content.ReadAsStringAsync();
+        string decodedSalesHtml = WebUtility.HtmlDecode(salesHtml);
         Assert.Equal(HttpStatusCode.OK, salesIndex.StatusCode);
-        Assert.Contains("Fictional Orchard Facilities", salesHtml);
-        Assert.Contains("Fictional Central Backlog", salesHtml);
+        Assert.Contains("架空果樹園設備", decodedSalesHtml);
+        Assert.Contains("架空中央支店 未処理作業", decodedSalesHtml);
         (string salesToken, string salesVersion, _) = await GetPageFormAsync(client, $"/work-orders/{assignedId}");
         using HttpResponseMessage salesWrite = await client.PostAsync(
             $"/work-orders/{assignedId}/transition",
@@ -215,9 +216,10 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         await LoginAsAsync(client, DemoRoleNames.FieldTechnician);
         using HttpResponseMessage technicianIndex = await client.GetAsync($"/work-orders?branchId={seed.BranchId}");
         string technicianHtml = await technicianIndex.Content.ReadAsStringAsync();
+        string decodedTechnicianHtml = WebUtility.HtmlDecode(technicianHtml);
         Assert.Equal(HttpStatusCode.OK, technicianIndex.StatusCode);
-        Assert.Contains("Fictional Orchard Facilities", technicianHtml);
-        Assert.DoesNotContain("Fictional Central Backlog", technicianHtml);
+        Assert.Contains("架空果樹園設備", decodedTechnicianHtml);
+        Assert.DoesNotContain("架空中央支店 未処理作業", decodedTechnicianHtml);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/work-orders/{assignedId}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/work-orders/{centralUnassignedId}")).StatusCode);
     }
@@ -596,10 +598,10 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         ApplicationUser sales = await dbContext.Users.SingleAsync(item => item.UserName == "sales.rep@fieldops.demo");
         ApplicationUser centralTechnician = await dbContext.Users.SingleAsync(item => item.UserName == "field.tech@fieldops.demo");
         centralTechnician.BranchId = branch.Id;
-        Party party = Party.CreateOrganization("Fictional Orchard Facilities");
+        Party party = Party.CreateOrganization("架空果樹園設備");
         party.AddRole(PartyRoleType.Customer);
         party.AssignToBranch(branch);
-        party.AddSite(branch, "Fictional Orchard Annex");
+        party.AddSite(branch, "架空果樹園 別館");
         Site site = party.Sites.Single();
         SalesOpportunity opportunity = SalesOpportunity.Create(branch, party, site);
         opportunity.AssignOwner(sales.Id);
@@ -638,10 +640,10 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Branch central = await dbContext.Branches.SingleAsync(item => item.Id == centralBranchId);
         Branch other = await dbContext.Branches.SingleAsync(item => item.Id != centralBranchId);
-        Party centralParty = Party.CreateOrganization("Fictional Central Backlog");
+        Party centralParty = Party.CreateOrganization("架空中央支店 未処理作業");
         centralParty.AddRole(PartyRoleType.Customer);
         centralParty.AssignToBranch(central);
-        centralParty.AddSite(central, "Fictional Central Backlog Site");
+        centralParty.AddSite(central, "架空中央支店 未処理現場");
         (SalesOpportunity centralOpportunity, WorkOrder centralWork) = TestWorkOrderFactory.CreateFromWon(
             central, centralParty, centralParty.Sites.Single());
         Party otherParty = Party.CreateOrganization("Fictional Other Branch Customer");
