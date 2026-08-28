@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 
+using FieldOps.Domain.Common;
 using FieldOps.Domain.Entities;
 using FieldOps.Domain.Enums;
 using FieldOps.Features.Abstractions;
@@ -11,6 +12,7 @@ using FieldOps.IntegrationTests.Infrastructure;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Npgsql;
 
@@ -115,11 +117,29 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         Assert.Contains("2026年9月1日", listHtml);
         Assert.Contains("￥125,000", listHtml);
         Assert.Contains("次の行動を確認する", listHtml);
+        Assert.True(Regex.Matches(listHtml, "回答待ち").Count >= 2);
+
+        Guid onHoldId = await CreateOpportunityAsync(
+            application,
+            seed,
+            "Fictional On Hold Prospect",
+            "On Hold Site",
+            seed.SalesUserId,
+            99000m,
+            new DateTime(2026, 9, 3),
+            SalesOpportunityStatus.OnHold);
+        using HttpResponseMessage onHoldList = await client.GetAsync($"/sales?branchId={seed.CentralBranchId}");
+        string onHoldListHtml = WebUtility.HtmlDecode(await onHoldList.Content.ReadAsStringAsync());
+        Assert.Contains($"/sales/{onHoldId}", onHoldListHtml);
+        Assert.True(Regex.Matches(onHoldListHtml, "再開待ち").Count >= 2);
 
         using HttpResponseMessage details = await client.GetAsync($"/sales/{id}");
         string detailsHtml = WebUtility.HtmlDecode(await details.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.OK, details.StatusCode);
-        Assert.Contains("この案件を受注にする", detailsHtml);
+        AssertTransitionRequiresConfirmation(detailsHtml, "受注");
+        AssertTransitionRequiresConfirmation(detailsHtml, "失注");
+        AssertTransitionRequiresConfirmation(detailsHtml, "保留");
+        Assert.Contains("この案件を受注にします。", detailsHtml);
         Assert.DoesNotContain("Move to Won", detailsHtml);
     }
 
@@ -191,14 +211,19 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         Assert.Contains("新規", decodedHtml);
         Assert.Contains("2026年9月15日", decodedHtml);
         Assert.Contains("￥900", decodedHtml);
-        Assert.Contains("この案件を連絡済みにする", decodedHtml);
-        Assert.Contains("この案件を失注にする", decodedHtml);
-        Assert.Contains("この案件を保留にする", decodedHtml);
+        AssertTransitionRequiresConfirmation(decodedHtml, "連絡済み");
+        AssertTransitionRequiresConfirmation(decodedHtml, "失注");
+        AssertTransitionRequiresConfirmation(decodedHtml, "保留");
         Assert.DoesNotContain("Move to Won", decodedHtml);
         string token = ExtractAntiforgeryToken(html);
         uint version = await GetVersionAsync(application, id);
         using HttpResponseMessage invalid = await client.PostAsync($"/sales/{id}/transition", TransitionForm(version, SalesOpportunityStatus.Won, token));
+        string invalidHtml = WebUtility.HtmlDecode(await invalid.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Contains("この状態には変更できません。最新の状態を確認してください。", invalidHtml);
+        Assert.DoesNotContain("SalesOpportunity", invalidHtml);
+        Assert.DoesNotContain("transition from", invalidHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("New to Won", invalidHtml);
 
         using HttpResponseMessage refreshed = await client.GetAsync($"/sales/{id}");
         token = ExtractAntiforgeryToken(await refreshed.Content.ReadAsStringAsync());
@@ -225,6 +250,46 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         Assert.Contains("ほかの利用者が先に更新しました。最新の内容を確認してください。", WebUtility.HtmlDecode(staleHtml));
         Assert.Contains($"value=\"{latestVersion}\"", staleHtml);
         Assert.Equal(1, await dbContext.AuditEntries.CountAsync(item => item.AggregateId == id));
+    }
+
+    [Fact]
+    public async Task UnknownSalesDomainErrorsFallBackToSafeJapaneseDisplayText()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            services =>
+            {
+                services.RemoveAll<IMutationExecutor>();
+                services.AddScoped<IMutationExecutor, UnknownDomainMessageMutationExecutor>();
+            });
+        SalesSeed seed = await SeedAsync(application);
+        Guid id = await CreateOpportunityAsync(
+            application,
+            seed,
+            "Fictional Unknown Error Prospect",
+            "Unknown Error Site",
+            seed.SalesUserId,
+            910m,
+            new DateTime(2026, 9, 16));
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.SalesRepresentative);
+        string detailsHtml = await client.GetStringAsync($"/sales/{id}");
+        string token = ExtractAntiforgeryToken(detailsHtml);
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/sales/{id}/transition",
+            TransitionForm(await GetVersionAsync(application, id), SalesOpportunityStatus.Contacted, token));
+
+        string html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("営業案件を更新できませんでした。入力内容を確認してください。", html);
+        Assert.DoesNotContain("Unexpected English internals", html);
+        Assert.DoesNotContain("SalesOpportunity", html);
+        Assert.DoesNotContain("New to Won", html);
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.False(await dbContext.AuditEntries.AnyAsync(item => item.AggregateId == id));
     }
 
     [Fact]
@@ -978,6 +1043,13 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
         return token;
     }
 
+    private static void AssertTransitionRequiresConfirmation(string html, string statusLabel)
+    {
+        Assert.Matches(
+            $"<button[^>]*data-confirm-action=\"true\"[^>]*data-confirm-title=\"営業案件の状態を変更しますか\"[^>]*data-confirm-message=\"この案件を{Regex.Escape(statusLabel)}にします。\"[^>]*>この案件を{Regex.Escape(statusLabel)}にする</button>",
+            html);
+    }
+
     private static FormUrlEncodedContent EditForm(
         Guid id,
         Guid branchId,
@@ -1062,5 +1134,14 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
             await transaction.CommitAsync(cancellationToken);
             return result;
         }
+    }
+
+    private sealed class UnknownDomainMessageMutationExecutor : IMutationExecutor
+    {
+        public Task<TResult> ExecuteAsync<TResult>(
+            string operation,
+            Func<CancellationToken, Task<TResult>> action,
+            CancellationToken cancellationToken = default) =>
+            throw new DomainException("Unexpected English internals: SalesOpportunity from New to Won broke.");
     }
 }

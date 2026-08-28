@@ -33,6 +33,19 @@ public static class UiDisplayText
         _ => "未定義"
     };
 
+    public static string ForSalesStatusDescription(SalesOpportunityStatus status) => status switch
+    {
+        SalesOpportunityStatus.New => "初回対応待ち",
+        SalesOpportunityStatus.Contacted => "要件確認中",
+        SalesOpportunityStatus.SurveyScheduled => "現地確認待ち",
+        SalesOpportunityStatus.Quoting => "見積準備中",
+        SalesOpportunityStatus.Proposed => "回答待ち",
+        SalesOpportunityStatus.Won => "作業予定へ引き継ぎ",
+        SalesOpportunityStatus.Lost => "対応終了",
+        SalesOpportunityStatus.OnHold => "再開待ち",
+        _ => "状態を確認してください"
+    };
+
     public static string ForWorkOrderStatus(WorkOrderStatus status) => status switch
     {
         WorkOrderStatus.Planned => "未設定",

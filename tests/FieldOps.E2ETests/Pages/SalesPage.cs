@@ -14,8 +14,18 @@ public sealed class SalesPage(IPage page)
         await page.GetByLabel("提案金額", new() { Exact = true }).FillAsync("765432");
         await page.GetByLabel("予定日", new() { Exact = true }).FillAsync("2026-12-20");
         await page.GetByRole(AriaRole.Button, new() { Name = "営業案件を登録する", Exact = true }).ClickAsync();
-        await page.GetByRole(AriaRole.Button, new() { Name = "この案件を連絡済みにする", Exact = true }).ClickAsync();
-        await page.GetByRole(AriaRole.Button, new() { Name = "この案件を現地確認予定にする", Exact = true }).ClickAsync();
+        await ConfirmTransitionAsync("連絡済み");
+        await ConfirmTransitionAsync("現地確認予定");
         await Assertions.Expect(page.GetByText("現地確認予定", new() { Exact = true })).ToBeVisibleAsync();
+    }
+
+    private async Task ConfirmTransitionAsync(string statusLabel)
+    {
+        await page.GetByRole(AriaRole.Button, new() { Name = $"この案件を{statusLabel}にする", Exact = true }).ClickAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "営業案件の状態を変更しますか", Exact = true }))
+            .ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByText($"この案件を{statusLabel}にします。", new() { Exact = true }))
+            .ToBeVisibleAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "実行する", Exact = true }).ClickAsync();
     }
 }

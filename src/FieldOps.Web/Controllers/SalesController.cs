@@ -234,14 +234,24 @@ public sealed class SalesController(
         }
     }
 
-    private static string ForSalesDisplayError(string message) => message switch
+    private static string ForSalesDisplayError(string message)
     {
-        "Proposal amount and expected close date must be provided together." => "提案金額と予定日は両方入力してください。",
-        "An existing sales opportunity proposal cannot be cleared." => "登録済みの提案金額と予定日は空にできません。",
-        "Select a sales owner in this branch." => "この支店の営業担当者を選んでください。",
-        "Select a technician in this branch." => "この支店の現場担当者を選んでください。",
-        _ => message
-    };
+        if (message.StartsWith("SalesOpportunity transition from ", StringComparison.Ordinal))
+        {
+            return "この状態には変更できません。最新の状態を確認してください。";
+        }
+
+        return message switch
+        {
+            "Proposal amount and expected close date must be provided together." => "提案金額と予定日は両方入力してください。",
+            "An existing sales opportunity proposal cannot be cleared." => "登録済みの提案金額と予定日は空にできません。",
+            "A sales opportunity proposal amount must be greater than zero." => "提案金額は1円以上で入力してください。",
+            "A sales opportunity expected close date is required." => "予定日を入力してください。",
+            "Select a sales owner in this branch." => "この支店の営業担当者を選んでください。",
+            "Select a technician in this branch." => "この支店の現場担当者を選んでください。",
+            _ => "営業案件を更新できませんでした。入力内容を確認してください。"
+        };
+    }
 
     private async Task<IActionResult> DetailsWithOutcomeAsync(Guid id, int statusCode, CancellationToken cancellationToken)
     {

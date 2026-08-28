@@ -52,26 +52,17 @@
             <div class="d-flex flex-wrap gap-2">
                 @foreach (var status in Model.AllowedTransitions)
                 {
-                    bool needsConfirmation = status is SalesOpportunityStatus.Lost or SalesOpportunityStatus.OnHold;
                     string statusLabel = UiDisplayText.ForSalesStatus(status);
                     <form asp-action="Transition" asp-route-id="@Model.Id" method="post">
                         <input name="Version" type="hidden" value="@Model.Version" />
                         <input name="NextStatus" type="hidden" value="@status" />
-                        @if (needsConfirmation)
-                        {
-                            <button type="submit"
-                                    class="btn btn-outline-primary"
-                                    data-confirm-action="true"
-                                    data-confirm-title="営業案件の状態を変更しますか"
-                                    data-confirm-target="@Model.PartyName"
-                                    data-confirm-message="この案件を@(statusLabel)にします。"
-                                    data-confirm-impact="変更後も監査履歴に記録され、画面の状態が更新されます。">この案件を@(statusLabel)にする</button>
-                        }
-                        else
-                        {
-                            <button type="submit"
-                                    class="btn @(status == SalesOpportunityStatus.Won ? "btn-success" : "btn-outline-primary")">この案件を@(statusLabel)にする</button>
-                        }
+                        <button type="submit"
+                                class="btn @(status == SalesOpportunityStatus.Won ? "btn-success" : "btn-outline-primary")"
+                                data-confirm-action="true"
+                                data-confirm-title="営業案件の状態を変更しますか"
+                                data-confirm-target="@Model.PartyName"
+                                data-confirm-message="この案件を@(statusLabel)にします。"
+                                data-confirm-impact="変更後も監査履歴に記録され、画面の状態が更新されます。">この案件を@(statusLabel)にする</button>
                     </form>
                 }
             </div>
