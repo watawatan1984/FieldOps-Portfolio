@@ -132,10 +132,10 @@ dotnet run --project src/FieldOps.Web --launch-profile http
 
 | 種別              |    結果 | 主な範囲                                                |
 | ----------------- | ------: | ------------------------------------------------------- |
-| Domain tests      |   62/62 | 不変条件、状態遷移、終端規則                            |
+| Domain tests      |   63/63 | 不変条件、状態遷移、終端規則                            |
 | Integration tests | 212/212 | 実PostgreSQL、認可、同時実行、障害、安全な初期化        |
 | Playwright E2E    |   27/27 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤      |
-| Full solution     | 301/301 | Release構成、失敗・スキップ0                            |
+| Full solution     | 302/302 | Release構成、失敗・スキップ0                            |
 | Baseline load     |    PASS | 20 VUs / 10分、11,843 requests、p95 31.90 ms、HTTP失敗0 |
 | Stress load       |    PASS | 100 VUs / 5分、29,548 requests、p95 39.63 ms、HTTP失敗0 |
 
@@ -160,6 +160,16 @@ dotnet test FieldOps.sln --configuration Release --no-build
 - Neon Freeも未使用時にscale-to-zeroするため、最初のDB接続が遅くなる場合があります。
 - 公開デモに対してbaseline/stress負荷試験は実行しません。
 - デモログインとデモ初期化は、承認済みの架空データセットでのみ有効にします。
+
+## 公開検証の運用手順
+
+Renderは `autoDeployTrigger: checksPass` で、mainブランチのコミット上のCIチェックがすべて成功してから自動デプロイを開始します。公開検証ワークフローをCI完了イベントで自動起動すると、公開検証チェック自身がRender開始条件に含まれて循環するため、Release verificationは手動実行だけにしています。
+
+公開時は次の順番で確認します。
+
+1. mainブランチのCIが成功する。
+2. Renderの自動デプロイが完了し、対象コミットが公開環境へ反映される。
+3. GitHub ActionsのRelease verificationを手動dispatchし、`github.sha` のソースで公開health/read-only smokeを検証する。
 
 ## 日本語概要
 

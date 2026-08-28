@@ -28,9 +28,10 @@ $requiredPatterns = [ordered]@{
     "reset safety" = "## デモ初期化の安全性"
     "test matrix" = "## テストと検証結果"
     "current verification date" = "2026-08-29、Windows / \.NET 10 / PostgreSQL 17 / Chromiumでローカル検証を再実行しました"
-    "current test counts" = "Domain tests\s*\|\s*62/62[\s\S]*Integration tests\s*\|\s*212/212[\s\S]*Playwright E2E\s*\|\s*27/27[\s\S]*Full solution\s*\|\s*301/301"
+    "current test counts" = "Domain tests\s*\|\s*63/63[\s\S]*Integration tests\s*\|\s*212/212[\s\S]*Playwright E2E\s*\|\s*27/27[\s\S]*Full solution\s*\|\s*302/302"
     "load evidence" = "docs/evidence/load-test-results\.md"
     "free-host limitation" = "コールドスタート|scale-to-zero"
+    "manual release verification operation" = "CIが成功[\s\S]*Renderの自動デプロイが完了[\s\S]*Release verificationを手動dispatch"
     "Japanese summary" = "## 日本語概要"
     "license status" = "ライセンスはまだ付与していません"
 }
