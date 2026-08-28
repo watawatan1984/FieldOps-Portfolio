@@ -420,6 +420,30 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task InvalidCreateRoleQueryFallsBackToNeutralCreatePageWithoutBinderError()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.SalesRepresentative);
+        Guid branchId = await GetBranchIdAsync(application, "sales.rep@fieldops.demo");
+
+        using HttpResponseMessage createPage = await client.GetAsync(
+            $"/parties/create?branchId={branchId}&role=NotARole");
+        string createHtml = await createPage.Content.ReadAsStringAsync();
+        string decodedCreateHtml = WebUtility.HtmlDecode(createHtml);
+
+        Assert.Equal(HttpStatusCode.OK, createPage.StatusCode);
+        Assert.Contains("<h1>顧客・協力会社を登録する</h1>", decodedCreateHtml);
+        Assert.Contains("この内容で登録する", decodedCreateHtml);
+        Assert.DoesNotContain("value=\"Customer\" selected", createHtml);
+        Assert.DoesNotContain("value=\"BusinessPartner\" selected", createHtml);
+        Assert.DoesNotContain("The value 'NotARole' is not valid", decodedCreateHtml);
+        Assert.DoesNotContain("is not valid for", decodedCreateHtml);
+        Assert.DoesNotContain("The field", decodedCreateHtml);
+    }
+
+    [Fact]
     public async Task UpdateAddsSecondRoleAndShareReusesTheSamePartyAcrossBranches()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();

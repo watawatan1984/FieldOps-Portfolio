@@ -78,3 +78,35 @@
 - 内部値: `PartyRoleType.Customer` / `PartyRoleType.BusinessPartner`、保存 role、demo `data-role`、固定 ID は変更なし。表示は既存 `UiDisplayText.ForPartyRole` を使用。
 - UI 抽象: 新しい CSS/JS/依存は追加せず、Task 3 の `task-card` / `responsive-records` の既存パターンを維持。
 - 懸念: E2E fixture は Release DLL 起動のため、E2E 前の Release build が引き続き必要。Minor 指摘の全取引先ページ語調は親台帳どおり対象外。
+
+## Fix round 2 evidence
+
+### 修正前確認
+- Review対象 `80bcf3688f4eaba0f39481214c86d535a9af6fe2` の `PartiesController.Create` GET は `[FromQuery] PartyRoleType? role` へ直接 bind しており、`role=NotARole` が ASP.NET enum binder を通る状態だった。
+- 回帰テスト `InvalidCreateRoleQueryFallsBackToNeutralCreatePageWithoutBinderError` を先に追加し、現行 view では 1 passed / 0 failed で画面露出までは再現しなかったが、指摘された direct enum bind 経路が残っていることをコード差分で確認した。
+
+### 修正内容
+- `PartiesController.Create` GET の query parameter を `string? role` に変更し、`Enum.TryParse` + `Enum.IsDefined` で既知の `Customer` / `BusinessPartner` だけを初期選択へ変換。
+- 不正な role query は `null` 扱いにして、中立 H1 `顧客・協力会社を登録する` と submit `この内容で登録する` にフォールバック。
+- POST 側の nullable `RoleType` validation、日本語 validation 文言、顧客/協力会社 role query 契約は変更なし。
+
+### 追加テスト
+- `tests/FieldOps.IntegrationTests/Features/PartyFeatureTests.cs`
+  - `/parties/create?branchId=...&role=NotARole` が 200 を返すこと。
+  - 中立 H1 / 中立 submit 文言になること。
+  - `Customer` / `BusinessPartner` が selected にならないこと。
+  - `The value 'NotARole' is not valid`、`is not valid for`、`The field` が画面に出ないこと。
+
+### GREEN / 影響確認
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~BusinessPartnerCreateRouteDefaultsAndPersistsBusinessPartnerRole|FullyQualifiedName~InvalidCreateRoleQueryFallsBackToNeutralCreatePageWithoutBinderError|FullyQualifiedName~DuplicateAndInvalidCreateReturnDeterministicUiWithoutAudit"` -> 3 passed / 0 failed。
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~PartyFeatureTests"` -> 17 passed / 0 failed。
+- `dotnet build src\FieldOps.Web\FieldOps.Web.csproj -c Release` -> succeeded, 0 warnings, 0 errors。
+- `dotnet test tests\FieldOps.E2ETests --filter "FullyQualifiedName~SystemAdministratorTests|FullyQualifiedName~BranchManagerTests|FullyQualifiedName~SalesRepresentativeTests" -- Playwright.BrowserName=chromium` -> 4 passed / 0 failed。
+- `dotnet test` -> Domain 62 passed, E2E 19 passed, Integration 198 passed。
+- `git diff --check` -> exit 0。LF-to-CRLF normalization warnings only。
+
+### Fix round 2 自己レビュー
+- 支店スコープ: `branchId` authorization flow は変更なし。不正 role query は支店 scope や検索条件へ影響しない。
+- 権限: policy / resource authorization は変更なし。
+- 内部値: `PartyRoleType.Customer` / `PartyRoleType.BusinessPartner` の enum 値、POST form values、保存 role は変更なし。GET query の解釈だけを安全化。
+- 懸念: 修正前の追加テストは現行 view で画面露出まではREDにならなかったため、RED evidence は direct enum bind 経路のコード確認として記録。実装後は binder を通さない構造と統合テストで固定済み。

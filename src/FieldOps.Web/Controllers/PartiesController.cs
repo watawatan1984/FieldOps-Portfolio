@@ -63,7 +63,7 @@ public sealed class PartiesController(
     [HttpGet("create")]
     public async Task<IActionResult> Create(
         [FromQuery] Guid branchId,
-        [FromQuery] PartyRoleType? role,
+        [FromQuery] string? role,
         CancellationToken cancellationToken)
     {
         IActionResult? denied = await AuthorizeBranchAsync(branchId, cancellationToken);
@@ -72,7 +72,8 @@ public sealed class PartiesController(
             return denied;
         }
 
-        PartyRoleType? initialRole = role is PartyRoleType candidate && Enum.IsDefined(candidate)
+        PartyRoleType? initialRole = Enum.TryParse(role, ignoreCase: false, out PartyRoleType candidate)
+            && Enum.IsDefined(candidate)
             ? candidate
             : null;
         await PopulateCreateContextAsync(branchId, initialRole, cancellationToken);
