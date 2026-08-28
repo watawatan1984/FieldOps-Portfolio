@@ -45,6 +45,27 @@ if (confirmActionModal && window.bootstrap) {
   let pendingForm = null;
   let pendingSubmitter = null;
   let confirmedForm = null;
+  let restoreSubmitter = null;
+
+  const restoreFocusToSubmitter = () => {
+    if (!restoreSubmitter) {
+      return;
+    }
+
+    const target = restoreSubmitter;
+    [0, 50, 150, 300].forEach(delay => {
+      window.setTimeout(() => {
+        if (document.body.contains(target)) {
+          target.focus({ preventScroll: true });
+        }
+      }, delay);
+    });
+    window.setTimeout(() => {
+      if (restoreSubmitter === target) {
+        restoreSubmitter = null;
+      }
+    }, 350);
+  };
 
   document.addEventListener('submit', event => {
     if (confirmedForm === event.target) {
@@ -61,6 +82,7 @@ if (confirmActionModal && window.bootstrap) {
     event.stopImmediatePropagation();
     pendingForm = event.target;
     pendingSubmitter = submitter;
+    restoreSubmitter = submitter;
 
     title.textContent = submitter.dataset.confirmTitle || '実行しますか';
     target.textContent = submitter.dataset.confirmTarget || submitter.textContent.trim() || '選択した情報';
@@ -79,14 +101,17 @@ if (confirmActionModal && window.bootstrap) {
     confirmedForm = form;
     pendingForm = null;
     pendingSubmitter = null;
+    restoreSubmitter = null;
     modal.hide();
     form.requestSubmit(submitter);
   });
 
+  confirmActionModal.querySelector('[data-confirm-cancel]')?.addEventListener('click', restoreFocusToSubmitter);
+
+  confirmActionModal.addEventListener('hide.bs.modal', restoreFocusToSubmitter);
+
   confirmActionModal.addEventListener('hidden.bs.modal', () => {
-    if (pendingSubmitter) {
-      pendingSubmitter.focus();
-    }
+    restoreFocusToSubmitter();
 
     pendingForm = null;
     pendingSubmitter = null;

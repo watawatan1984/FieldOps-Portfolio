@@ -45,3 +45,33 @@ complete
 
 - `git diff --check` reports CRLF conversion warnings for touched files, but no whitespace errors.
 - The responsive tests intentionally treat vertically lower page controls as reachable by normal scrolling; they fail on horizontal overflow, left/top disappearance, missing expected headings, hidden tablet cards, focus loss, and missing focus outline.
+
+## Fix Round 1
+
+### Status
+
+complete
+
+### Review Items Fixed
+
+- Replaced the keyboard journey's direct `FocusAsync()` and DOM-order proxy with real `Tab`, `Shift+Tab`, and `Enter` navigation. The test now verifies focus at the menu button, work-order navigation, work-order card, add-event link, work-event back link, save button, transition button, and modal cancel recovery.
+- Expanded offscreen interactive detection to inspect visible `a[href]`, `button`, non-hidden `input`, `select`, `textarea`, `summary`, and non-negative `tabindex` targets. Open offcanvas navigation is explicitly inspected after the `show` state is reached, and each visible element is scrolled into nearest view before horizontal clipping is checked.
+- Updated the confirm modal script so keyboard cancellation restores focus to the original submitter while preserving the execution path's one-shot `requestSubmit(savedSubmitter)` behavior.
+
+### RED-GREEN
+
+- RED command: `dotnet build src\FieldOps.Web\FieldOps.Web.csproj -c Release; dotnet test tests\FieldOps.E2ETests --configuration Release --filter "FullyQualifiedName~ResponsiveUsabilityTests|FullyQualifiedName~AccessibilitySmokeTests" -- Playwright.BrowserName=chromium`
+- RED result: build passed, tests failed as expected. The broadened offcanvas inspection detected transition-state horizontal clipping in opened navigation, and the real Tab/Enter journey failed to restore focus to `作業を開始する` after modal cancellation.
+- GREEN command: `dotnet build src\FieldOps.Web\FieldOps.Web.csproj -c Release; dotnet test tests\FieldOps.E2ETests --configuration Release --filter "FullyQualifiedName~ResponsiveUsabilityTests|FullyQualifiedName~AccessibilitySmokeTests" -- Playwright.BrowserName=chromium`
+- GREEN result: PASS, 11/11.
+
+### Verification
+
+- `dotnet test tests\FieldOps.E2ETests --configuration Release --no-build -- Playwright.BrowserName=chromium`: PASS, 27/27.
+- `dotnet build FieldOps.sln --configuration Release --no-restore`: PASS, 0 warnings, 0 errors.
+- `dotnet test FieldOps.sln --configuration Release --no-restore`: PASS. Domain 62/62, E2E 27/27, Integration 203/203.
+- `git diff --check`: PASS, exit code 0; CRLF conversion warnings only.
+
+### Concerns
+
+- Format-only Minor feedback remains deferred to Task 10 as instructed.

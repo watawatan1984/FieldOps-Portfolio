@@ -22,11 +22,13 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
             await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "今日やること", Exact = true }))
                 .ToBeVisibleAsync();
             await AssertNoHorizontalViewportOverflowAsync(page, "field technician dashboard");
-            await AssertPrimaryActionsInsideViewportAsync(page, "field technician dashboard");
+            await AssertVisibleInteractiveElementsFitHorizontallyAsync(page, "field technician dashboard");
 
             if (width < 992)
             {
                 await page.GetByRole(AriaRole.Button, new() { Name = "メニューを開く", Exact = true }).ClickAsync();
+                await WaitForOpenedNavigationAsync(page);
+                await AssertVisibleInteractiveElementsFitHorizontallyAsync(page, "field technician opened navigation");
             }
 
             await page.Locator("[data-nav='work-orders']").ClickAsync();
@@ -38,7 +40,7 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
             }
 
             await AssertNoHorizontalViewportOverflowAsync(page, "field technician work orders");
-            await AssertPrimaryActionsInsideViewportAsync(page, "field technician work orders");
+            await AssertVisibleInteractiveElementsFitHorizontallyAsync(page, "field technician work orders");
         },
         new ViewportSize { Width = width, Height = height });
 
@@ -51,15 +53,17 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
             await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "今日やること", Exact = true }))
                 .ToBeVisibleAsync();
             await AssertNoHorizontalViewportOverflowAsync(page, "200 percent dashboard reflow");
-            await AssertPrimaryActionsInsideViewportAsync(page, "200 percent dashboard reflow");
+            await AssertVisibleInteractiveElementsFitHorizontallyAsync(page, "200 percent dashboard reflow");
 
             await page.GetByRole(AriaRole.Button, new() { Name = "メニューを開く", Exact = true }).ClickAsync();
+            await WaitForOpenedNavigationAsync(page);
+            await AssertVisibleInteractiveElementsFitHorizontallyAsync(page, "200 percent opened navigation");
             await page.Locator("[data-nav='customers']").ClickAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "顧客を探す", Exact = true }))
                 .ToBeVisibleAsync();
             await Assertions.Expect(page.Locator("table")).ToBeHiddenAsync();
             await AssertNoHorizontalViewportOverflowAsync(page, "200 percent customer list reflow");
-            await AssertPrimaryActionsInsideViewportAsync(page, "200 percent customer list reflow");
+            await AssertVisibleInteractiveElementsFitHorizontallyAsync(page, "200 percent customer list reflow");
         },
         new ViewportSize { Width = 384, Height = 512 });
 
@@ -73,6 +77,7 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
 
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.BranchManager);
             await page.GetByRole(AriaRole.Button, new() { Name = "メニューを開く", Exact = true }).ClickAsync();
+            await WaitForOpenedNavigationAsync(page);
             await page.Locator("[data-nav='customers']").ClickAsync();
             await page.GetByRole(AriaRole.Link, new() { Name = "新しい顧客を登録する", Exact = true }).ClickAsync();
             await page.GetByLabel("組織名", new() { Exact = true }).FillAsync(longName);
@@ -84,50 +89,62 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
             await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = longName, Exact = true }))
                 .ToBeVisibleAsync();
             await AssertNoHorizontalViewportOverflowAsync(page, "long Japanese details");
-            await AssertPrimaryActionsInsideViewportAsync(page, "long Japanese details");
+            await AssertVisibleInteractiveElementsFitHorizontallyAsync(page, "long Japanese details");
         },
         new ViewportSize { Width = 384, Height = 512 });
 
     [Fact]
-    public Task KeyboardOrderFocusRingAndDialogFocusRecoveryStayUsable() => fixture.RunAsync(
-        nameof(KeyboardOrderFocusRingAndDialogFocusRecoveryStayUsable),
+    public Task KeyboardCanTabThroughPrimaryWorkOrderJourneyAndRecoverDialogFocus() => fixture.RunAsync(
+        nameof(KeyboardCanTabThroughPrimaryWorkOrderJourneyAndRecoverDialogFocus),
         async (page, _) =>
         {
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.FieldTechnician);
+
+            ILocator menuButton = page.GetByRole(AriaRole.Button, new() { Name = "メニューを開く", Exact = true });
+            await PressTabUntilFocusedAsync(page, menuButton, "menu button");
+            await AssertFocusedElementHasVisibleOutlineAsync(page, "menu button");
+
+            ILocator workOrdersNavigation = page.Locator("[data-nav='work-orders']");
+            await PressTabUntilFocusedAsync(page, workOrdersNavigation, "work orders navigation");
+            await AssertFocusedElementHasVisibleOutlineAsync(page, "work orders navigation");
+            await page.Keyboard.PressAsync("Enter");
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "作業予定", Exact = true }))
+                .ToBeVisibleAsync();
+
+            ILocator workOrderCard = page.GetByRole(AriaRole.Link, new() { Name = "架空設備サービス 02", Exact = true }).First;
+            await PressTabUntilFocusedAsync(page, workOrderCard, "work order card");
+            await AssertFocusedElementHasVisibleOutlineAsync(page, "work order card");
+            await page.Keyboard.PressAsync("Enter");
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "架空設備サービス 02", Exact = true }))
+                .ToBeVisibleAsync();
+
+            ILocator addEventLink = page.GetByRole(AriaRole.Link, new() { Name = "作業記録を追加する", Exact = true });
+            await PressTabUntilFocusedAsync(page, addEventLink, "add work event link");
+            await AssertFocusedElementHasVisibleOutlineAsync(page, "add work event link");
+            await page.Keyboard.PressAsync("Enter");
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "作業記録を追加する", Exact = true }))
+                .ToBeVisibleAsync();
+
+            ILocator backLink = page.GetByRole(AriaRole.Link, new() { Name = "前の画面へ戻る", Exact = true });
+            await PressTabUntilFocusedAsync(page, backLink, "work event back link");
+            await AssertFocusedElementHasVisibleOutlineAsync(page, "work event back link");
+            ILocator saveButton = page.GetByRole(AriaRole.Button, new() { Name = "作業記録を保存する", Exact = true });
             await page.Keyboard.PressAsync("Tab");
-            await AssertFocusedElementHasVisibleOutlineAsync(page, "first keyboard stop");
+            await Assertions.Expect(saveButton).ToBeFocusedAsync();
+            await AssertFocusedElementHasVisibleOutlineAsync(page, "work event save button");
 
-            ILocator firstCardAction = page.Locator("[data-action-card]").First.GetByRole(AriaRole.Link).First;
-            await firstCardAction.FocusAsync();
-            await AssertFocusedElementHasVisibleOutlineAsync(page, "dashboard action card");
-
-            await page.Locator("[data-nav='work-orders']").ClickAsync();
-            await page.GetByRole(AriaRole.Link, new() { Name = "架空設備サービス 02", Exact = true }).First.ClickAsync();
-            await page.GetByRole(AriaRole.Link, new() { Name = "作業記録を追加する", Exact = true }).ClickAsync();
-            string[] formStops = await page.EvaluateAsync<string[]>(
-                """
-                () => {
-                const form = Array.from(document.querySelectorAll('form'))
-                  .find(candidate => candidate.textContent?.includes('作業記録を保存する'));
-                if (!form) {
-                  return [];
-                }
-
-                return Array.from(form.querySelectorAll('a[href], button:not([disabled]), input:not([type=hidden]), select, textarea'))
-                  .filter(element => element.offsetParent !== null)
-                  .map(element => element.getAttribute('aria-label') || element.textContent?.trim() || element.labels?.[0]?.textContent?.trim() || '');
-                }
-                """);
-            Assert.True(formStops.Length >= 2, "The work event form should expose at least back and submit controls.");
-            Assert.Equal("前の画面へ戻る", formStops[^2]);
-            Assert.Equal("作業記録を保存する", formStops[^1]);
-
-            await page.GetByRole(AriaRole.Link, new() { Name = "前の画面へ戻る", Exact = true }).ClickAsync();
+            await PressShiftTabUntilFocusedAsync(page, backLink, "work event back link");
+            await page.Keyboard.PressAsync("Enter");
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "架空設備サービス 02", Exact = true }))
+                .ToBeVisibleAsync();
             ILocator transitionButton = page.GetByRole(AriaRole.Button, new() { Name = "作業を開始する", Exact = true });
-            await transitionButton.ClickAsync();
+            await PressTabUntilFocusedAsync(page, transitionButton, "start work transition button");
+            await page.Keyboard.PressAsync("Enter");
             await Assertions.Expect(page.GetByRole(AriaRole.Dialog, new() { Name = "作業を開始しますか", Exact = true }))
                 .ToBeVisibleAsync();
-            await page.GetByRole(AriaRole.Button, new() { Name = "やめる", Exact = true }).ClickAsync();
+            ILocator cancelButton = page.GetByRole(AriaRole.Button, new() { Name = "やめる", Exact = true });
+            await PressTabUntilFocusedAsync(page, cancelButton, "confirmation cancel button", 4);
+            await page.Keyboard.PressAsync("Enter");
             await Assertions.Expect(transitionButton).ToBeFocusedAsync();
             await AssertFocusedElementHasVisibleOutlineAsync(page, "cancelled confirmation button");
         });
@@ -169,20 +186,32 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
         Assert.False(hasOverflow, $"{context} should not create document-level horizontal scrolling.");
     }
 
-    private static async Task AssertPrimaryActionsInsideViewportAsync(IPage page, string context)
+    private static async Task AssertVisibleInteractiveElementsFitHorizontallyAsync(IPage page, string context)
     {
-        string[] offscreenActions = await page.Locator("main a[href], main button, header button")
+        string[] offscreenActions = await page.Locator(
+                "a[href], button, input:not([type=hidden]), select, textarea, summary, [tabindex]:not([tabindex=\"-1\"])")
             .EvaluateAllAsync<string[]>(
                 """
-                elements => elements
-                  .filter(element => element.offsetParent !== null)
-                  .map(element => {
+                elements => {
+                  const isVisible = element => {
+                    const style = getComputedStyle(element);
                     const rect = element.getBoundingClientRect();
-                    const name = element.getAttribute('aria-label') || element.textContent?.trim() || element.value || element.tagName;
-                    return { name, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-                  })
-                  .filter(item => item.right > window.innerWidth + 1 || item.left < -1 || item.top < -1)
-                  .map(item => `${item.name} (${Math.round(item.left)},${Math.round(item.top)},${Math.round(item.right)},${Math.round(item.bottom)})`)
+                    return style.visibility !== 'hidden' &&
+                      style.display !== 'none' &&
+                      rect.width > 0 &&
+                      rect.height > 0;
+                  };
+                  return elements
+                    .filter(isVisible)
+                    .map(element => {
+                      element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                      const rect = element.getBoundingClientRect();
+                      const name = element.getAttribute('aria-label') || element.textContent?.trim() || element.labels?.[0]?.textContent?.trim() || element.value || element.tagName;
+                      return { name, left: rect.left, right: rect.right };
+                    })
+                    .filter(item => item.right > window.innerWidth + 1 || item.left < -1)
+                    .map(item => `${item.name} (${Math.round(item.left)},${Math.round(item.right)})`);
+                }
                 """);
         Assert.Empty(offscreenActions);
     }
@@ -195,5 +224,44 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
             "() => parseFloat(getComputedStyle(document.activeElement).outlineWidth)");
         Assert.NotEqual("none", outlineStyle);
         Assert.True(outlineWidth >= 2, $"{context} should expose a visible outline.");
+    }
+
+    private static async Task WaitForOpenedNavigationAsync(IPage page)
+    {
+        await Assertions.Expect(page.Locator("#primaryNavigation.show")).ToBeVisibleAsync();
+    }
+
+    private static async Task PressTabUntilFocusedAsync(IPage page, ILocator expected, string context, int maxTabs = 40)
+    {
+        for (int count = 0; count < maxTabs; count++)
+        {
+            await page.Keyboard.PressAsync("Tab");
+            if (await expected.EvaluateAsync<bool>("element => element === document.activeElement"))
+            {
+                await Assertions.Expect(expected).ToBeFocusedAsync();
+                return;
+            }
+        }
+
+        string activeText = await page.EvaluateAsync<string>(
+            "() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent?.trim() || document.activeElement?.tagName || ''");
+        Assert.Fail($"Tab did not reach {context}. Active element: {activeText}");
+    }
+
+    private static async Task PressShiftTabUntilFocusedAsync(IPage page, ILocator expected, string context, int maxTabs = 12)
+    {
+        for (int count = 0; count < maxTabs; count++)
+        {
+            await page.Keyboard.PressAsync("Shift+Tab");
+            if (await expected.EvaluateAsync<bool>("element => element === document.activeElement"))
+            {
+                await Assertions.Expect(expected).ToBeFocusedAsync();
+                return;
+            }
+        }
+
+        string activeText = await page.EvaluateAsync<string>(
+            "() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent?.trim() || document.activeElement?.tagName || ''");
+        Assert.Fail($"Shift+Tab did not reach {context}. Active element: {activeText}");
     }
 }
