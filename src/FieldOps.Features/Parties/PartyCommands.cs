@@ -1,4 +1,5 @@
 using FieldOps.Domain.Entities;
+using FieldOps.Domain.Enums;
 using FieldOps.Features.Abstractions;
 
 using Microsoft.EntityFrameworkCore;
@@ -50,7 +51,9 @@ public sealed class PartyCommands(
                 Branch branch = await dbContext.Branches.SingleOrDefaultAsync(
                     item => item.Id == input.BranchId,
                     token) ?? throw new KeyNotFoundException("Branch not found.");
-                party.AddRole(input.RoleType);
+                PartyRoleType roleType = input.RoleType
+                    ?? throw new ArgumentException("A party role is required.", nameof(input));
+                party.AddRole(roleType);
                 party.AssignToBranch(branch);
                 List<string> changedFields = [nameof(input.OrganizationName), nameof(input.RoleType), nameof(input.BranchId)];
 

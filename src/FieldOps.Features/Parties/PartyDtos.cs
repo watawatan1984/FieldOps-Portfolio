@@ -8,7 +8,7 @@ public sealed class PartySearchRequest
 {
     public Guid BranchId { get; init; }
 
-    [StringLength(100)]
+    [StringLength(100, ErrorMessage = "検索キーワードは100文字以内で入力してください")]
     public string? Search { get; init; }
     public PartyRoleType? Role { get; init; }
     public int Page { get; init; } = 1;
@@ -57,24 +57,24 @@ public sealed class CreatePartyInput
     public Guid BranchId { get; set; }
 
     [Required(ErrorMessage = "組織名を入力してください")]
-    [StringLength(200)]
+    [StringLength(200, ErrorMessage = "組織名は200文字以内で入力してください")]
     [Display(Name = "組織名")]
     public string OrganizationName { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "顧客または協力会社を選んでください")]
-    [EnumDataType(typeof(PartyRoleType), ErrorMessage = "顧客または協力会社を選んでください")]
+    [Required(ErrorMessage = "顧客または協力会社を選んでください。")]
+    [EnumDataType(typeof(PartyRoleType), ErrorMessage = "顧客または協力会社を選んでください。")]
     [Display(Name = "登録区分")]
-    public PartyRoleType RoleType { get; set; } = PartyRoleType.Customer;
+    public PartyRoleType? RoleType { get; set; }
 
-    [StringLength(100)]
+    [StringLength(100, ErrorMessage = "担当者の名は100文字以内で入力してください")]
     [Display(Name = "担当者の名")]
     public string? ContactFirstName { get; set; }
 
-    [StringLength(100)]
+    [StringLength(100, ErrorMessage = "担当者の姓は100文字以内で入力してください")]
     [Display(Name = "担当者の姓")]
     public string? ContactLastName { get; set; }
 
-    [StringLength(200)]
+    [StringLength(200, ErrorMessage = "現場名は200文字以内で入力してください")]
     [Display(Name = "現場名")]
     public string? SiteName { get; set; }
 }
@@ -86,7 +86,7 @@ public sealed class EditPartyInput
     public uint Version { get; set; }
 
     [Required(ErrorMessage = "組織名を入力してください")]
-    [StringLength(200)]
+    [StringLength(200, ErrorMessage = "組織名は200文字以内で入力してください")]
     [Display(Name = "組織名")]
     public string OrganizationName { get; set; } = string.Empty;
 

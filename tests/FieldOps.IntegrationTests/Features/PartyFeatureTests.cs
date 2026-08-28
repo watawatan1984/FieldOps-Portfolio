@@ -307,11 +307,17 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage partnerPage = await client.GetAsync(
             $"/business-partners?branchId={branchId}&pageSize=500");
         string partnerHtml = await partnerPage.Content.ReadAsStringAsync();
+        string decodedPartnerHtml = WebUtility.HtmlDecode(partnerHtml);
+        using HttpResponseMessage allPartiesPage = await client.GetAsync(
+            $"/parties?branchId={branchId}&pageSize=500");
+        string allPartiesHtml = await allPartiesPage.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, customerPage.StatusCode);
         Assert.Contains("顧客を探す", customerHtml);
         Assert.Contains("顧客名・担当者名・現場名で検索", customerHtml);
         Assert.Contains("顧客の情報を見る", customerHtml);
+        Assert.Contains("d-none d-xl-block", customerHtml);
+        Assert.Contains("d-xl-none", customerHtml);
         string visibleCustomerHtml = Regex.Replace(customerHtml, "data-policy=\"[^\"]*\"", string.Empty);
         Assert.DoesNotContain("Parties", visibleCustomerHtml);
         Assert.DoesNotContain("Business partner", visibleCustomerHtml);
@@ -321,6 +327,13 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.OK, partnerPage.StatusCode);
         Assert.Contains("Fictional Dual Role", partnerHtml);
         Assert.Contains("pageSize=100", partnerHtml);
+        Assert.Contains("d-none d-xl-block", partnerHtml);
+        Assert.Contains("d-xl-none", partnerHtml);
+        Assert.Contains($"/parties/create?branchId={branchId}&role=BusinessPartner", decodedPartnerHtml);
+
+        Assert.Equal(HttpStatusCode.OK, allPartiesPage.StatusCode);
+        Assert.Contains("d-none d-xl-block", allPartiesHtml);
+        Assert.Contains("d-xl-none", allPartiesHtml);
     }
 
     [Fact]
@@ -365,6 +378,45 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         Assert.Contains("ContactFirstName", audit.ChangeSummary);
         Assert.DoesNotContain("Robin", audit.ChangeSummary, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Cedar Water Facility", audit.ChangeSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BusinessPartnerCreateRouteDefaultsAndPersistsBusinessPartnerRole()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.SalesRepresentative);
+        Guid branchId = await GetBranchIdAsync(application, "sales.rep@fieldops.demo");
+
+        using HttpResponseMessage createPage = await client.GetAsync(
+            $"/parties/create?branchId={branchId}&role=BusinessPartner");
+        string createHtml = await createPage.Content.ReadAsStringAsync();
+        string decodedCreateHtml = WebUtility.HtmlDecode(createHtml);
+
+        Assert.Equal(HttpStatusCode.OK, createPage.StatusCode);
+        Assert.Contains("協力会社を登録する", decodedCreateHtml);
+        Assert.Contains("この内容で協力会社を登録する", decodedCreateHtml);
+        Assert.Contains("value=\"BusinessPartner\" selected", createHtml);
+
+        string token = GetAntiforgeryToken(createHtml);
+        using HttpResponseMessage response = await client.PostAsync(
+            "/parties/create",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["BranchId"] = branchId.ToString(),
+                ["OrganizationName"] = "Fictional Partner Route",
+                ["RoleType"] = PartyRoleType.BusinessPartner.ToString(),
+                ["__RequestVerificationToken"] = token
+            }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Party party = await dbContext.Parties.Include(item => item.Roles)
+            .SingleAsync(item => item.OrganizationName == "Fictional Partner Route");
+        Assert.DoesNotContain(party.Roles, role => role.RoleType == PartyRoleType.Customer);
+        Assert.Contains(party.Roles, role => role.RoleType == PartyRoleType.BusinessPartner);
     }
 
     [Fact]
@@ -482,6 +534,56 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         string decodedInvalidRoleHtml = WebUtility.HtmlDecode(invalidRoleHtml);
         Assert.Equal(HttpStatusCode.BadRequest, invalidRole.StatusCode);
         Assert.Contains("顧客または協力会社を選んでください", decodedInvalidRoleHtml);
+
+        token = await GetAntiforgeryTokenAsync(client, $"/parties/create?branchId={branchId}");
+        using HttpResponseMessage missingRole = await client.PostAsync(
+            "/parties/create",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["BranchId"] = branchId.ToString(),
+                ["OrganizationName"] = "Fictional Missing Role",
+                ["__RequestVerificationToken"] = token
+            }));
+        string decodedMissingRoleHtml = WebUtility.HtmlDecode(await missingRole.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, missingRole.StatusCode);
+        Assert.Contains("顧客または協力会社を選んでください", decodedMissingRoleHtml);
+
+        token = await GetAntiforgeryTokenAsync(client, $"/parties/create?branchId={branchId}");
+        using HttpResponseMessage emptyRole = await client.PostAsync(
+            "/parties/create",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["BranchId"] = branchId.ToString(),
+                ["OrganizationName"] = "Fictional Empty Role",
+                ["RoleType"] = string.Empty,
+                ["__RequestVerificationToken"] = token
+            }));
+        string decodedEmptyRoleHtml = WebUtility.HtmlDecode(await emptyRole.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, emptyRole.StatusCode);
+        Assert.Contains("顧客または協力会社を選んでください", decodedEmptyRoleHtml);
+
+        token = await GetAntiforgeryTokenAsync(client, $"/parties/create?branchId={branchId}");
+        string tooLongName = new('長', 201);
+        using HttpResponseMessage tooLong = await client.PostAsync(
+            "/parties/create",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["BranchId"] = branchId.ToString(),
+                ["OrganizationName"] = tooLongName,
+                ["RoleType"] = PartyRoleType.Customer.ToString(),
+                ["ContactFirstName"] = new('名', 101),
+                ["ContactLastName"] = new('姓', 101),
+                ["SiteName"] = new('現', 201),
+                ["__RequestVerificationToken"] = token
+            }));
+        string decodedTooLongHtml = WebUtility.HtmlDecode(await tooLong.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Contains("組織名は200文字以内で入力してください", decodedTooLongHtml);
+        Assert.Contains("担当者の名は100文字以内で入力してください", decodedTooLongHtml);
+        Assert.Contains("担当者の姓は100文字以内で入力してください", decodedTooLongHtml);
+        Assert.Contains("現場名は200文字以内で入力してください", decodedTooLongHtml);
+        Assert.DoesNotContain("The field", decodedTooLongHtml);
+        Assert.DoesNotContain("must be a string", decodedTooLongHtml);
 
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
@@ -767,6 +869,15 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage page = await client.GetAsync(path);
         string html = await page.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        string token = Regex.Match(
+            html,
+            "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
+        Assert.NotEmpty(token);
+        return token;
+    }
+
+    private static string GetAntiforgeryToken(string html)
+    {
         string token = Regex.Match(
             html,
             "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;

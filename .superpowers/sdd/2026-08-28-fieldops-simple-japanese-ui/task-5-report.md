@@ -42,3 +42,39 @@
 ## 懸念
 - `PartyFeatureTests` の英語非表示確認は Layout の内部 `data-policy="ManageParties"` を除外して判定している。利用者に見える顧客画面の英語混入を確認するための調整。
 - E2E fixture が Release DLL を直接起動するため、E2E 実行前に Release ビルドが必要。
+
+## Fix round 1 evidence
+
+### 修正前再現
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~PartyFeatureTests"` -> 13 passed / 3 failed。`d-none d-xl-block` 不在、協力会社作成 GET が顧客文言、RoleType 未送信が redirect になることを確認。
+- `dotnet test tests\FieldOps.E2ETests --filter "FullyQualifiedName~TabletLandscapeCustomerListUsesCards" -- Playwright.BrowserName=chromium` -> 0 passed / 1 failed。1024px 幅で table が表示され、カードの `顧客の情報を見る` が見えないことを確認。
+
+### 修正内容
+- `Customers/Index.cshtml`、`BusinessPartners/Index.cshtml`、`Parties/Index.cshtml` の一覧 table を `d-none d-xl-block`、カードを `d-xl-none` に変更し、1024px をカード表示に固定。
+- 顧客一覧 CTA は `role=Customer`、協力会社一覧 CTA は `role=BusinessPartner` を渡すように変更。全取引先一覧の CTA は中立文言のまま role なし。
+- `PartiesController.Create` GET で role query を検証し、顧客/協力会社/中立の title/H1/submit 文言と初期選択を切り替え。
+- `CreatePartyInput.RoleType` を nullable にし、空選択・不正値を `顧客または協力会社を選んでください。` で拒否。各 `StringLength` に自然な日本語 `ErrorMessage` を追加。
+- `PartyCommands.CreateAsync` は controller/DTO validation 後の nullable role を明示的に確認してから既存の `party.AddRole(roleType)` へ渡すようにし、domain/command の内部 enum 契約は維持。
+
+### 追加・更新テスト
+- `tests/FieldOps.IntegrationTests/Features/PartyFeatureTests.cs`
+  - 顧客/協力会社/全取引先一覧が `xl` breakpoint で table/card を切り替えることをビュー検査で固定。
+  - 協力会社登録導線が `role=BusinessPartner` を渡し、Create GET の初期選択・H1・submit 文言が協力会社向けになることを固定。
+  - 協力会社登録 POST が `BusinessPartner` role として保存され、誤って `Customer` role を付けないことを確認。
+  - RoleType 不正・未送信・空文字と長すぎる文字列が BadRequest になり、日本語 validation 文言を返し、ASP.NET 既定英語文言を画面に出さないことを確認。
+- `tests/FieldOps.E2ETests/Roles/SalesRepresentativeTests.cs`
+  - 1024x768 viewport で顧客一覧がカード表示になり、table が hidden になることを固定。
+
+### GREEN / 影響テスト / 全体確認
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~PartyFeatureTests"` -> 16 passed / 0 failed。
+- `dotnet build src\FieldOps.Web\FieldOps.Web.csproj -c Release` -> succeeded, 0 warnings, 0 errors。
+- `dotnet test tests\FieldOps.E2ETests --filter "FullyQualifiedName~SystemAdministratorTests|FullyQualifiedName~BranchManagerTests|FullyQualifiedName~SalesRepresentativeTests" -- Playwright.BrowserName=chromium` -> 4 passed / 0 failed。
+- `dotnet test` -> Domain 62 passed, E2E 19 passed, Integration 197 passed。
+- `git diff --check` -> exit 0。LF-to-CRLF normalization warnings only。
+
+### Fix round 1 自己レビュー
+- 支店スコープ: `AuthorizeBranchAsync`、`AuthorizePartyAsync`、`BranchResourceAction.ManageParties` は変更なし。role query は表示初期値だけに使い、branchId scope を広げていない。
+- 権限: controller policy と resource authorization は変更なし。
+- 内部値: `PartyRoleType.Customer` / `PartyRoleType.BusinessPartner`、保存 role、demo `data-role`、固定 ID は変更なし。表示は既存 `UiDisplayText.ForPartyRole` を使用。
+- UI 抽象: 新しい CSS/JS/依存は追加せず、Task 3 の `task-card` / `responsive-records` の既存パターンを維持。
+- 懸念: E2E fixture は Release DLL 起動のため、E2E 前の Release build が引き続き必要。Minor 指摘の全取引先ページ語調は親台帳どおり対象外。

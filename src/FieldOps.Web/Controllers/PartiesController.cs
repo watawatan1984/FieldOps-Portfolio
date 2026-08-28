@@ -1,5 +1,6 @@
 using System.Security.Claims;
 
+using FieldOps.Domain.Enums;
 using FieldOps.Features.Parties;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Web.Authorization;
@@ -60,7 +61,10 @@ public sealed class PartiesController(
     }
 
     [HttpGet("create")]
-    public async Task<IActionResult> Create([FromQuery] Guid branchId, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create(
+        [FromQuery] Guid branchId,
+        [FromQuery] PartyRoleType? role,
+        CancellationToken cancellationToken)
     {
         IActionResult? denied = await AuthorizeBranchAsync(branchId, cancellationToken);
         if (denied is not null)
@@ -68,8 +72,11 @@ public sealed class PartiesController(
             return denied;
         }
 
-        ViewData["BranchName"] = await queries.GetBranchNameAsync(branchId, cancellationToken);
-        return View("Create", new CreatePartyInput { BranchId = branchId });
+        PartyRoleType? initialRole = role is PartyRoleType candidate && Enum.IsDefined(candidate)
+            ? candidate
+            : null;
+        await PopulateCreateContextAsync(branchId, initialRole, cancellationToken);
+        return View("Create", new CreatePartyInput { BranchId = branchId, RoleType = initialRole });
     }
 
     [HttpPost("create")]
@@ -87,12 +94,13 @@ public sealed class PartiesController(
             ModelState.AddModelError(nameof(input.ContactLastName), "担当者の姓と名を両方入力してください");
         }
 
-        if (!Enum.IsDefined(input.RoleType))
+        if (input.RoleType is null || !Enum.IsDefined(input.RoleType.Value))
         {
-            AddPartyError(nameof(input.RoleType), "顧客または協力会社を選んでください");
+            ModelState.Remove(nameof(input.RoleType));
+            AddPartyError(nameof(input.RoleType), "顧客または協力会社を選んでください。");
         }
 
-        ViewData["BranchName"] = await queries.GetBranchNameAsync(input.BranchId, cancellationToken);
+        await PopulateCreateContextAsync(input.BranchId, input.RoleType, cancellationToken);
         if (!ModelState.IsValid)
         {
             Response.StatusCode = StatusCodes.Status400BadRequest;
@@ -108,6 +116,7 @@ public sealed class PartiesController(
         {
             _ = exception;
             AddPartyError(nameof(input.OrganizationName), "同じ組織名がすでに登録されています");
+            await PopulateCreateContextAsync(input.BranchId, input.RoleType, cancellationToken);
             Response.StatusCode = StatusCodes.Status409Conflict;
             return View("Create", input);
         }
@@ -297,6 +306,28 @@ public sealed class PartiesController(
         ViewData["Branches"] = User.IsInRole(DemoRoleNames.SystemAdministrator)
             ? await queries.GetBranchOptionsAsync(cancellationToken)
             : Array.Empty<BranchOption>();
+    }
+
+    private async Task PopulateCreateContextAsync(
+        Guid branchId,
+        PartyRoleType? role,
+        CancellationToken cancellationToken)
+    {
+        ViewData["BranchName"] = await queries.GetBranchNameAsync(branchId, cancellationToken);
+        string target = role switch
+        {
+            PartyRoleType.Customer => "顧客",
+            PartyRoleType.BusinessPartner => "協力会社",
+            _ => "顧客・協力会社"
+        };
+        ViewData["CreateTitle"] = $"{target}を登録";
+        ViewData["CreateHeading"] = $"{target}を登録する";
+        ViewData["CreateSubmit"] = role switch
+        {
+            PartyRoleType.Customer => "この内容で顧客を登録する",
+            PartyRoleType.BusinessPartner => "この内容で協力会社を登録する",
+            _ => "この内容で登録する"
+        };
     }
 
     private void AddPartyError(string key, string message)

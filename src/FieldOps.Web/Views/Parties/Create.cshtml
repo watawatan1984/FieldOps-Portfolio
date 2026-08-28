@@ -2,7 +2,10 @@
 @using FieldOps.Domain.Enums
 @using FieldOps.Web.Formatting
 @{
-    ViewData["Title"] = "顧客を登録";
+    string title = ViewData["CreateTitle"] as string ?? "顧客・協力会社を登録";
+    string heading = ViewData["CreateHeading"] as string ?? "顧客・協力会社を登録する";
+    string submitText = ViewData["CreateSubmit"] as string ?? "この内容で登録する";
+    ViewData["Title"] = title;
 }
 
 <nav aria-label="現在位置">
@@ -13,7 +16,7 @@
     </ol>
 </nav>
 
-<h1>顧客を登録する</h1>
+<h1>@heading</h1>
 <p class="page-intro">担当支店 <strong>@ViewData["BranchName"]</strong> に、顧客または協力会社の基本情報を登録します。</p>
 
 <form asp-action="Create" method="post" class="card task-card">
@@ -36,8 +39,9 @@
             <label asp-for="RoleType" class="form-label"></label>
             <span class="badge text-bg-danger ms-1">必須</span>
             <select asp-for="RoleType" class="form-select">
-                <option value="@PartyRoleType.Customer">@UiDisplayText.ForPartyRole(PartyRoleType.Customer)</option>
-                <option value="@PartyRoleType.BusinessPartner">@UiDisplayText.ForPartyRole(PartyRoleType.BusinessPartner)</option>
+                <option value="">選んでください</option>
+                <option value="@PartyRoleType.Customer" selected="@(Model.RoleType == PartyRoleType.Customer ? "selected" : null)">@UiDisplayText.ForPartyRole(PartyRoleType.Customer)</option>
+                <option value="@PartyRoleType.BusinessPartner" selected="@(Model.RoleType == PartyRoleType.BusinessPartner ? "selected" : null)">@UiDisplayText.ForPartyRole(PartyRoleType.BusinessPartner)</option>
             </select>
             <span asp-validation-for="RoleType" class="text-danger"></span>
         </div>
@@ -66,7 +70,7 @@
         </div>
 
         <div class="d-flex flex-wrap gap-2">
-            <button type="submit" class="btn btn-primary">この内容で顧客を登録する</button>
+            <button type="submit" class="btn btn-primary">@submitText</button>
             <a asp-action="Index" asp-route-branchId="@Model.BranchId" class="btn btn-link">前の画面へ戻る</a>
         </div>
     </div>

@@ -27,4 +27,18 @@ public sealed class SalesRepresentativeTests(FieldOpsWebFixture fixture)
             errors.ExpectForbiddenNavigation("/audit");
             Assert.Equal(403, (await page.GotoAsync("/audit"))!.Status);
         });
+
+    [Fact]
+    public Task TabletLandscapeCustomerListUsesCards() => fixture.RunAsync(
+        nameof(TabletLandscapeCustomerListUsesCards),
+        async (page, errors) =>
+        {
+            await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.SalesRepresentative);
+            await page.Locator("[data-nav='customers']").ClickAsync();
+
+            await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { Name = "顧客の情報を見る" }).First)
+                .ToBeVisibleAsync();
+            await Assertions.Expect(page.Locator("table")).ToBeHiddenAsync();
+        },
+        new ViewportSize { Width = 1024, Height = 768 });
 }

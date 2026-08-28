@@ -20,7 +20,7 @@
         <p class="page-intro mb-1">この画面では顧客を探し、詳しい情報を確認できます。</p>
         <p class="text-body-secondary mb-0">担当支店: <strong>@Model.BranchName</strong></p>
     </div>
-    <a class="btn btn-primary" asp-controller="Parties" asp-action="Create" asp-route-branchId="@Model.BranchId">新しい顧客を登録する</a>
+    <a class="btn btn-primary" asp-controller="Parties" asp-action="Create" asp-route-branchId="@Model.BranchId" asp-route-role="@PartyRoleType.Customer">新しい顧客を登録する</a>
 </div>
 
 <form method="get" class="row g-2 mb-4" role="search">
@@ -40,7 +40,7 @@
 }
 else
 {
-    <div class="responsive-records d-none d-lg-block">
+    <div class="responsive-records d-none d-xl-block">
         <table class="table align-middle bg-white">
             <thead>
                 <tr>
@@ -63,7 +63,7 @@ else
             </tbody>
         </table>
     </div>
-    <div class="row g-3 d-lg-none">
+    <div class="row g-3 d-xl-none">
     @foreach (var party in Model.Items)
     {
         <div class="col-12 col-md-6">
@@ -82,7 +82,7 @@ else
 }
 
 <nav aria-label="顧客のページ" class="d-flex flex-wrap align-items-center gap-2 mt-3">
-    <span class="text-body-secondary">全@Model.TotalCount件</span>
+    <span class="text-body-secondary">全@(Model.TotalCount)件</span>
     <ul class="pagination mb-0">
         <li class="page-item @(Model.Page <= 1 ? "disabled" : null)">
             <a class="page-link" href="@Url.Action("Index", new { branchId = Model.BranchId, search = Model.Search, page = previousPage, pageSize = Model.PageSize })">前へ</a>
