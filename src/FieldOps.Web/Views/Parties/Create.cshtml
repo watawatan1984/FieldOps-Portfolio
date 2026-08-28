@@ -1,17 +1,75 @@
 @model FieldOps.Features.Parties.CreatePartyInput
 @using FieldOps.Domain.Enums
+@using FieldOps.Web.Formatting
 @{
-    ViewData["Title"] = "Create party";
+    ViewData["Title"] = "顧客を登録";
 }
-<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/">Dashboard</a></li><li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">Parties</a></li><li class="breadcrumb-item active" aria-current="page">Create</li></ol></nav>
-<h1>Create party</h1>
-<p class="text-body-secondary">Branch scope: <strong>@ViewData["BranchName"]</strong></p>
-<form asp-action="Create" method="post">
-    <div asp-validation-summary="All" class="text-danger" role="alert" tabindex="-1"></div><input asp-for="BranchId" type="hidden" />
-    <div class="mb-3"><label asp-for="OrganizationName" class="form-label"></label><input asp-for="OrganizationName" class="form-control" autofocus /><span asp-validation-for="OrganizationName" class="text-danger"></span></div>
-    <div class="mb-3"><label asp-for="RoleType" class="form-label"></label><select asp-for="RoleType" asp-items="Html.GetEnumSelectList<PartyRoleType>()" class="form-select"></select><span asp-validation-for="RoleType" class="text-danger"></span></div>
-    <fieldset class="mb-3"><legend class="h5">Primary contact (optional)</legend><div class="row"><div class="col-sm-6"><label asp-for="ContactFirstName" class="form-label"></label><input asp-for="ContactFirstName" class="form-control" /><span asp-validation-for="ContactFirstName" class="text-danger"></span></div><div class="col-sm-6"><label asp-for="ContactLastName" class="form-label"></label><input asp-for="ContactLastName" class="form-control" /><span asp-validation-for="ContactLastName" class="text-danger"></span></div></div></fieldset>
-    <div class="mb-3"><label asp-for="SiteName" class="form-label"></label><input asp-for="SiteName" class="form-control" /><span asp-validation-for="SiteName" class="text-danger"></span></div>
-    <button type="submit" class="btn btn-primary">Create party</button><a asp-action="Index" asp-route-branchId="@Model.BranchId" class="btn btn-link">Cancel</a>
+
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">顧客・協力会社</a></li>
+        <li class="breadcrumb-item active" aria-current="page">登録</li>
+    </ol>
+</nav>
+
+<h1>顧客を登録する</h1>
+<p class="page-intro">担当支店 <strong>@ViewData["BranchName"]</strong> に、顧客または協力会社の基本情報を登録します。</p>
+
+<form asp-action="Create" method="post" class="card task-card">
+    <div class="card-body">
+        @if (ViewData["PartyError"] is string partyError)
+        {
+            <div class="alert alert-danger" role="alert">@partyError</div>
+        }
+        <div asp-validation-summary="All" class="text-danger" role="alert" tabindex="-1"></div>
+        <input asp-for="BranchId" type="hidden" />
+
+        <div class="mb-3">
+            <label asp-for="OrganizationName" class="form-label"></label>
+            <span class="badge text-bg-danger ms-1">必須</span>
+            <input asp-for="OrganizationName" class="form-control" autofocus />
+            <span asp-validation-for="OrganizationName" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="RoleType" class="form-label"></label>
+            <span class="badge text-bg-danger ms-1">必須</span>
+            <select asp-for="RoleType" class="form-select">
+                <option value="@PartyRoleType.Customer">@UiDisplayText.ForPartyRole(PartyRoleType.Customer)</option>
+                <option value="@PartyRoleType.BusinessPartner">@UiDisplayText.ForPartyRole(PartyRoleType.BusinessPartner)</option>
+            </select>
+            <span asp-validation-for="RoleType" class="text-danger"></span>
+        </div>
+
+        <fieldset class="mb-3">
+            <legend class="h5">主な連絡先</legend>
+            <p class="text-body-secondary">担当者名が分かる場合だけ入力します。</p>
+            <div class="row g-2">
+                <div class="col-sm-6">
+                    <label asp-for="ContactLastName" class="form-label"></label>
+                    <input asp-for="ContactLastName" class="form-control" />
+                    <span asp-validation-for="ContactLastName" class="text-danger"></span>
+                </div>
+                <div class="col-sm-6">
+                    <label asp-for="ContactFirstName" class="form-label"></label>
+                    <input asp-for="ContactFirstName" class="form-control" />
+                    <span asp-validation-for="ContactFirstName" class="text-danger"></span>
+                </div>
+            </div>
+        </fieldset>
+
+        <div class="mb-4">
+            <label asp-for="SiteName" class="form-label"></label>
+            <input asp-for="SiteName" class="form-control" />
+            <span asp-validation-for="SiteName" class="text-danger"></span>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary">この内容で顧客を登録する</button>
+            <a asp-action="Index" asp-route-branchId="@Model.BranchId" class="btn btn-link">前の画面へ戻る</a>
+        </div>
+    </div>
 </form>
+
 @section Scripts { <partial name="_ValidationScriptsPartial" /> }

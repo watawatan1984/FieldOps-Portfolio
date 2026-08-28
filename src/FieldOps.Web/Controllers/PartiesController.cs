@@ -84,7 +84,12 @@ public sealed class PartiesController(
 
         if (string.IsNullOrWhiteSpace(input.ContactFirstName) != string.IsNullOrWhiteSpace(input.ContactLastName))
         {
-            ModelState.AddModelError(nameof(input.ContactLastName), "Enter both contact first and last names.");
+            ModelState.AddModelError(nameof(input.ContactLastName), "担当者の姓と名を両方入力してください");
+        }
+
+        if (!Enum.IsDefined(input.RoleType))
+        {
+            AddPartyError(nameof(input.RoleType), "顧客または協力会社を選んでください");
         }
 
         ViewData["BranchName"] = await queries.GetBranchNameAsync(input.BranchId, cancellationToken);
@@ -101,7 +106,8 @@ public sealed class PartiesController(
         }
         catch (PartyDuplicateException exception)
         {
-            ModelState.AddModelError(nameof(input.OrganizationName), exception.Message);
+            _ = exception;
+            AddPartyError(nameof(input.OrganizationName), "同じ組織名がすでに登録されています");
             Response.StatusCode = StatusCodes.Status409Conflict;
             return View("Create", input);
         }
@@ -163,7 +169,7 @@ public sealed class PartiesController(
 
         if (!input.IsCustomer && !input.IsBusinessPartner)
         {
-            ModelState.AddModelError(string.Empty, "Select at least one party role.");
+            AddPartyError(string.Empty, "顧客または協力会社を選んでください");
         }
 
         await PopulateEditContextAsync(input.BranchId, cancellationToken);
@@ -180,19 +186,21 @@ public sealed class PartiesController(
         }
         catch (PartyDuplicateException exception)
         {
-            ModelState.AddModelError(nameof(input.OrganizationName), exception.Message);
+            _ = exception;
+            AddPartyError(nameof(input.OrganizationName), "同じ組織名がすでに登録されています");
             Response.StatusCode = StatusCodes.Status409Conflict;
             return View(input);
         }
         catch (PartyConcurrencyException)
         {
-            ModelState.AddModelError(string.Empty, "This party changed after you opened the form. Reload and try again.");
+            AddPartyError(string.Empty, "ほかの利用者が先に更新しました。画面を読み込み直して、もう一度操作してください");
             Response.StatusCode = StatusCodes.Status409Conflict;
             return View(input);
         }
         catch (PartyRoleRemovalException exception)
         {
-            ModelState.AddModelError(string.Empty, exception.Message);
+            _ = exception;
+            AddPartyError(string.Empty, "すでに登録済みの区分はこの画面では外せません");
             Response.StatusCode = StatusCodes.Status400BadRequest;
             return View(input);
         }
@@ -213,9 +221,9 @@ public sealed class PartiesController(
 
         if (!ModelState.IsValid || input.TargetBranchId is null || input.TargetBranchId == Guid.Empty)
         {
-            if (input.TargetBranchId == Guid.Empty)
+            if (input.TargetBranchId is null || input.TargetBranchId == Guid.Empty)
             {
-                ModelState.AddModelError(nameof(input.TargetBranchId), "Select a target branch.");
+                AddPartyError(nameof(input.TargetBranchId), "共有先の支店を選んでください");
             }
 
             return await EditWithShareOutcomeAsync(
@@ -239,7 +247,7 @@ public sealed class PartiesController(
         catch (PartyConcurrencyException)
         {
             ModelState.Remove(nameof(input.Version));
-            ModelState.AddModelError(string.Empty, "This party changed after you opened the form. Reload and try again.");
+            AddPartyError(string.Empty, "ほかの利用者が先に更新しました。画面を読み込み直して、もう一度操作してください");
             return await EditWithShareOutcomeAsync(
                 id,
                 input.BranchId,
@@ -248,7 +256,8 @@ public sealed class PartiesController(
         }
         catch (PartyAlreadySharedException exception)
         {
-            ModelState.AddModelError(nameof(input.TargetBranchId), exception.Message);
+            _ = exception;
+            AddPartyError(nameof(input.TargetBranchId), "この支店にはすでに共有されています");
             return await EditWithShareOutcomeAsync(
                 id,
                 input.BranchId,
@@ -288,6 +297,12 @@ public sealed class PartiesController(
         ViewData["Branches"] = User.IsInRole(DemoRoleNames.SystemAdministrator)
             ? await queries.GetBranchOptionsAsync(cancellationToken)
             : Array.Empty<BranchOption>();
+    }
+
+    private void AddPartyError(string key, string message)
+    {
+        ModelState.AddModelError(key, message);
+        ViewData["PartyError"] = message;
     }
 
     private async Task<IActionResult> EditWithShareOutcomeAsync(

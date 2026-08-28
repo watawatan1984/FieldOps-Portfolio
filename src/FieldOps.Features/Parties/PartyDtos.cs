@@ -56,25 +56,26 @@ public sealed class CreatePartyInput
 {
     public Guid BranchId { get; set; }
 
-    [Required, StringLength(200)]
-    [Display(Name = "Organization name")]
+    [Required(ErrorMessage = "組織名を入力してください")]
+    [StringLength(200)]
+    [Display(Name = "組織名")]
     public string OrganizationName { get; set; } = string.Empty;
 
-    [Required]
-    [EnumDataType(typeof(PartyRoleType))]
-    [Display(Name = "Initial role")]
+    [Required(ErrorMessage = "顧客または協力会社を選んでください")]
+    [EnumDataType(typeof(PartyRoleType), ErrorMessage = "顧客または協力会社を選んでください")]
+    [Display(Name = "登録区分")]
     public PartyRoleType RoleType { get; set; } = PartyRoleType.Customer;
 
     [StringLength(100)]
-    [Display(Name = "Contact first name")]
+    [Display(Name = "担当者の名")]
     public string? ContactFirstName { get; set; }
 
     [StringLength(100)]
-    [Display(Name = "Contact last name")]
+    [Display(Name = "担当者の姓")]
     public string? ContactLastName { get; set; }
 
     [StringLength(200)]
-    [Display(Name = "Site name")]
+    [Display(Name = "現場名")]
     public string? SiteName { get; set; }
 }
 
@@ -84,14 +85,15 @@ public sealed class EditPartyInput
     public Guid BranchId { get; set; }
     public uint Version { get; set; }
 
-    [Required, StringLength(200)]
-    [Display(Name = "Organization name")]
+    [Required(ErrorMessage = "組織名を入力してください")]
+    [StringLength(200)]
+    [Display(Name = "組織名")]
     public string OrganizationName { get; set; } = string.Empty;
 
-    [Display(Name = "Customer")]
+    [Display(Name = "顧客")]
     public bool IsCustomer { get; set; }
 
-    [Display(Name = "Business partner")]
+    [Display(Name = "協力会社")]
     public bool IsBusinessPartner { get; set; }
 
     public IReadOnlyList<Guid> AssignedBranchIds { get; set; } = [];
@@ -101,8 +103,8 @@ public sealed class SharePartyInput
 {
     public Guid BranchId { get; set; }
 
-    [Required(ErrorMessage = "Select a target branch.")]
-    [Display(Name = "Target branch")]
+    [Required(ErrorMessage = "共有先の支店を選んでください")]
+    [Display(Name = "共有先の支店")]
     public Guid? TargetBranchId { get; set; }
 
     public uint Version { get; set; }

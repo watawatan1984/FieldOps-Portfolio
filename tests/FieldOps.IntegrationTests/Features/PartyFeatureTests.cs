@@ -192,10 +192,11 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
                 ["__RequestVerificationToken"] = token
             }));
         string html = await response.Content.ReadAsStringAsync();
+        string decodedHtml = WebUtility.HtmlDecode(html);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("Edit party", html);
-        Assert.Contains("Select a target branch", html);
+        Assert.Contains("顧客情報を変更する", html);
+        Assert.Contains("共有先の支店を選んでください", decodedHtml);
         Assert.Contains("validation-summary-errors", html);
         Assert.Contains("field-validation-error", html);
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
@@ -236,8 +237,9 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
             $"/parties/{partyId}/share",
             SharePartyForm(branchId, targetBranchId, currentVersion, token));
         string duplicateHtml = await duplicate.Content.ReadAsStringAsync();
+        string decodedDuplicateHtml = WebUtility.HtmlDecode(duplicateHtml);
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
-        Assert.Contains("already assigned", duplicateHtml);
+        Assert.Contains("この支店にはすでに共有されています", decodedDuplicateHtml);
 
         token = await GetAntiforgeryTokenAsync(client, $"/parties/{partyId}/edit?branchId={branchId}");
         uint staleVersion = await GetPartyVersionAsync(application, partyId);
@@ -247,8 +249,9 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
             $"/parties/{partyId}/share",
             SharePartyForm(branchId, targetBranchId, staleVersion, token));
         string staleHtml = await stale.Content.ReadAsStringAsync();
+        string decodedStaleHtml = WebUtility.HtmlDecode(staleHtml);
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
-        Assert.Contains("changed after you opened", staleHtml);
+        Assert.Contains("ほかの利用者が先に更新しました", decodedStaleHtml);
         Assert.Equal(refreshedVersion.ToString(), GetInputValue(staleHtml, "Version"));
 
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
@@ -286,7 +289,7 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         string foreignSiteHtml = await foreignSiteSearch.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, foreignSiteSearch.StatusCode);
         Assert.DoesNotContain("Fictional Northwind Services", foreignSiteHtml);
-        Assert.Contains("No parties match", foreignSiteHtml);
+        Assert.Contains("条件に合う顧客はまだありません", foreignSiteHtml);
     }
 
     [Fact]
@@ -306,6 +309,12 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         string partnerHtml = await partnerPage.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, customerPage.StatusCode);
+        Assert.Contains("顧客を探す", customerHtml);
+        Assert.Contains("顧客名・担当者名・現場名で検索", customerHtml);
+        Assert.Contains("顧客の情報を見る", customerHtml);
+        string visibleCustomerHtml = Regex.Replace(customerHtml, "data-policy=\"[^\"]*\"", string.Empty);
+        Assert.DoesNotContain("Parties", visibleCustomerHtml);
+        Assert.DoesNotContain("Business partner", visibleCustomerHtml);
         Assert.Contains("Fictional Bravo Customer", customerHtml);
         Assert.DoesNotContain("Fictional Alpha Customer", customerHtml);
         Assert.Contains("search=Fictional", customerHtml);
@@ -400,10 +409,11 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage targetDetails = await client.GetAsync(
             $"/parties/{partyId}?branchId={targetBranchId}");
         string html = await targetDetails.Content.ReadAsStringAsync();
+        string decodedHtml = WebUtility.HtmlDecode(html);
         Assert.Equal(HttpStatusCode.OK, targetDetails.StatusCode);
         Assert.Contains("Fictional Meridian Services Updated", html);
-        Assert.Contains(">Customer<", html);
-        Assert.Contains(">Business partner<", html);
+        Assert.Contains(">顧客<", decodedHtml);
+        Assert.Contains(">協力会社<", decodedHtml);
 
         uint sharedVersion = await GetPartyVersionAsync(application, partyId);
         token = await GetAntiforgeryTokenAsync(client, $"/parties/{partyId}/edit?branchId={sourceBranchId}");
@@ -420,7 +430,7 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
                 ["__RequestVerificationToken"] = token
             }));
         Assert.Equal(HttpStatusCode.BadRequest, removal.StatusCode);
-        Assert.Contains("cannot be removed", await removal.Content.ReadAsStringAsync());
+        Assert.Contains("すでに登録済みの区分はこの画面では外せません", WebUtility.HtmlDecode(await removal.Content.ReadAsStringAsync()));
 
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
@@ -445,17 +455,18 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
             "/parties/create",
             CreatePartyForm(branchId, "  FICTIONAL MERIDIAN SERVICES  ", token));
         string duplicateHtml = await duplicate.Content.ReadAsStringAsync();
+        string decodedDuplicateHtml = WebUtility.HtmlDecode(duplicateHtml);
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
-        Assert.Contains("already exists", duplicateHtml);
+        Assert.Contains("同じ組織名がすでに登録されています", decodedDuplicateHtml);
 
         token = await GetAntiforgeryTokenAsync(client, $"/parties/create?branchId={branchId}");
         using HttpResponseMessage invalid = await client.PostAsync(
             "/parties/create",
             CreatePartyForm(branchId, string.Empty, token));
         string invalidHtml = await invalid.Content.ReadAsStringAsync();
+        string decodedInvalidHtml = WebUtility.HtmlDecode(invalidHtml);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
-        Assert.Contains("Organization name", invalidHtml);
-        Assert.Contains("required", invalidHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("組織名を入力してください", decodedInvalidHtml);
 
         token = await GetAntiforgeryTokenAsync(client, $"/parties/create?branchId={branchId}");
         using HttpResponseMessage invalidRole = await client.PostAsync(
@@ -467,7 +478,10 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
                 ["RoleType"] = "999",
                 ["__RequestVerificationToken"] = token
             }));
+        string invalidRoleHtml = await invalidRole.Content.ReadAsStringAsync();
+        string decodedInvalidRoleHtml = WebUtility.HtmlDecode(invalidRoleHtml);
         Assert.Equal(HttpStatusCode.BadRequest, invalidRole.StatusCode);
+        Assert.Contains("顧客または協力会社を選んでください", decodedInvalidRoleHtml);
 
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
@@ -498,9 +512,10 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
                 ["__RequestVerificationToken"] = token
             }));
         string html = await response.Content.ReadAsStringAsync();
+        string decodedHtml = WebUtility.HtmlDecode(html);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Contains("changed after you opened", html);
+        Assert.Contains("ほかの利用者が先に更新しました", decodedHtml);
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Assert.False(await dbContext.AuditEntries.AnyAsync(item => item.AggregateId == partyId));
