@@ -2,30 +2,137 @@
 @using FieldOps.Domain.Enums
 @{
     ViewData["Title"] = Model.PartyName;
+    string statusLabel = UiDisplayText.ForWorkOrderStatus(Model.Status);
 }
-<nav aria-label="Breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="/work-orders?branchId=@Model.BranchId">Work orders</a></li><li class="breadcrumb-item active">@Model.PartyName</li></ol></nav>
+
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item"><a href="/work-orders?branchId=@Model.BranchId">作業予定</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@Model.PartyName</li>
+    </ol>
+</nav>
+
 <div asp-validation-summary="All" class="text-danger" role="alert"></div>
-<div class="d-flex justify-content-between"><div><h1>@Model.PartyName</h1><p>@Model.SiteName · @Model.BranchName</p></div><span class="badge text-bg-primary">@Model.Status</span></div>
-<dl class="row"><dt class="col-sm-3">Scheduled start</dt><dd class="col-sm-9">@(Model.ScheduledStartUtc?.ToString("u") ?? "Not scheduled")</dd><dt class="col-sm-3">Assigned technician</dt><dd class="col-sm-9">@(Model.AssignedUserName ?? "Not assigned")</dd></dl>
-@if (Model.CanManage && Model.Status == WorkOrderStatus.Planned)
-{
-    <p><a class="btn btn-primary" href="/work-orders/@Model.Id/edit">Schedule and assign</a></p>
-}
-@if (Model.CanUpdate && Model.Status is not WorkOrderStatus.Completed and not WorkOrderStatus.Cancelled)
-{
-    <p><a class="btn btn-outline-primary" href="/work-orders/@Model.Id/events/add">Add work event</a></p>
-}
-@if (Model.CanCorrect && Model.Status == WorkOrderStatus.Completed)
-{
-    <p><a class="btn btn-outline-warning" href="/work-orders/@Model.Id/events/add">Add correction</a></p>
-}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h1>@Model.PartyName</h1>
+        <p class="page-intro mb-1">@Model.SiteName</p>
+        <p class="text-body-secondary mb-0">担当支店: <strong>@Model.BranchName</strong></p>
+    </div>
+    <span class="badge text-bg-primary fs-6">@statusLabel</span>
+</div>
+
+<section class="mb-3" aria-label="作業予定の概要">
+    <dl class="row">
+        <dt class="col-sm-3">予定日時</dt>
+        <dd class="col-sm-9">@FormatSchedule(Model.ScheduledStartUtc)</dd>
+        <dt class="col-sm-3">担当者</dt>
+        <dd class="col-sm-9">@(Model.AssignedUserName ?? "未設定")</dd>
+    </dl>
+</section>
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+    @if (Model.CanManage && Model.Status == WorkOrderStatus.Planned)
+    {
+        <a class="btn btn-primary" href="/work-orders/@Model.Id/edit">日程と担当者を決める</a>
+    }
+    @if (Model.CanUpdate && Model.Status is not WorkOrderStatus.Completed and not WorkOrderStatus.Cancelled)
+    {
+        <a class="btn btn-outline-primary" href="/work-orders/@Model.Id/events/add">作業記録を追加する</a>
+    }
+    @if (Model.CanCorrect && Model.Status == WorkOrderStatus.Completed)
+    {
+        <a class="btn btn-outline-warning" href="/work-orders/@Model.Id/events/add">訂正記録を追加する</a>
+    }
+</div>
+
 @if (Model.AllowedTransitions.Count > 0)
 {
-    <section><h2 class="h4">Available actions</h2>@foreach (var status in Model.AllowedTransitions) { <form action="/work-orders/@Model.Id/transition" method="post" class="d-inline"><input name="Version" id="Version" type="hidden" value="@Model.Version" /><input name="NextStatus" type="hidden" value="@status" />@Html.AntiForgeryToken()<button type="submit" class="btn btn-outline-primary">Move to @status</button></form> }</section>
+    <section class="mb-4">
+        <h2 class="h4">状態を変更する</h2>
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var status in Model.AllowedTransitions)
+            {
+                string nextStatusLabel = UiDisplayText.ForWorkOrderStatus(status);
+                <form action="/work-orders/@Model.Id/transition" method="post" class="d-inline">
+                    <input name="Version" id="Version" type="hidden" value="@Model.Version" />
+                    <input name="NextStatus" type="hidden" value="@status" />
+                    @Html.AntiForgeryToken()
+                    <button type="submit"
+                            class="btn btn-outline-primary"
+                            data-confirm-action
+                            data-confirm-title="@TransitionTitle(status)"
+                            data-confirm-target="@Model.PartyName"
+                            data-confirm-message="状態を「@nextStatusLabel」に変更します。"
+                            data-confirm-impact="@TransitionImpact(status)">@TransitionLabel(status)</button>
+                </form>
+            }
+        </div>
+    </section>
 }
 else
 {
     <form class="d-none">@Html.AntiForgeryToken()<input name="Version" id="Version" type="hidden" value="@Model.Version" /></form>
 }
-<hr />
-<section><h2 class="h4">Work history</h2>@if (Model.Events.Count == 0) { <p>No work events recorded.</p> } else { <ol>@foreach (var workEvent in Model.Events) { <li><time datetime="@workEvent.OccurredAtUtc.ToString("O")">@workEvent.OccurredAtUtc.ToString("u")</time> — @workEvent.EventType — @workEvent.Summary</li> }</ol> }</section>
+
+<section class="mb-4">
+    <h2 class="h4">作業履歴</h2>
+    @if (Model.Events.Count == 0)
+    {
+        <p class="app-empty-state" role="status">作業記録はまだありません。</p>
+    }
+    else
+    {
+        <ol class="list-group list-group-numbered">
+        @foreach (var workEvent in Model.Events)
+        {
+            <li class="list-group-item">
+                <div class="fw-semibold">@UiDisplayText.ForWorkEventType(workEvent.EventType)</div>
+                <time datetime="@workEvent.OccurredAtUtc.ToString("O")">@JapanTimeFormatter.FormatUtc(workEvent.OccurredAtUtc)</time>
+                <p class="mb-0">@workEvent.Summary</p>
+            </li>
+        }
+        </ol>
+    }
+</section>
+
+<details class="details-disclosure">
+    <summary>詳細を見る</summary>
+    <dl class="row mt-2">
+        <dt class="col-sm-3">内部状態</dt>
+        <dd class="col-sm-9">@Model.Status</dd>
+        <dt class="col-sm-3">予定日時 UTC</dt>
+        <dd class="col-sm-9">@(Model.ScheduledStartUtc?.ToString("O") ?? "Not scheduled")</dd>
+        <dt class="col-sm-3">Version</dt>
+        <dd class="col-sm-9">@Model.Version</dd>
+    </dl>
+</details>
+
+@functions {
+    private static string FormatSchedule(DateTime? scheduledStartUtc) =>
+        scheduledStartUtc.HasValue ? JapanTimeFormatter.FormatUtc(scheduledStartUtc.Value) : "未設定";
+
+    private static string TransitionLabel(WorkOrderStatus status) => status switch
+    {
+        WorkOrderStatus.InProgress => "作業を開始する",
+        WorkOrderStatus.Completed => "作業を完了する",
+        WorkOrderStatus.Cancelled => "作業予定を取り消す",
+        _ => $"状態を{UiDisplayText.ForWorkOrderStatus(status)}に変更する"
+    };
+
+    private static string TransitionTitle(WorkOrderStatus status) => status switch
+    {
+        WorkOrderStatus.InProgress => "作業を開始しますか",
+        WorkOrderStatus.Completed => "作業を完了しますか",
+        WorkOrderStatus.Cancelled => "作業予定を取り消しますか",
+        _ => "状態を変更しますか"
+    };
+
+    private static string TransitionImpact(WorkOrderStatus status) => status switch
+    {
+        WorkOrderStatus.Completed => "完了後は通常の作業記録を追加できません。",
+        WorkOrderStatus.Cancelled => "取り消し後はこの作業予定を再開できません。",
+        _ => "実行後、作業予定の状態が更新されます。"
+    };
+}

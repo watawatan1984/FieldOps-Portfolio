@@ -1,17 +1,131 @@
 @model FieldOps.Features.Work.WorkOrderIndexViewModel
+@using FieldOps.Domain.Enums
 @{
-    ViewData["Title"] = "Work orders";
+    ViewData["Title"] = "作業予定";
 }
-<h1>Work orders</h1>
-@if (Model.CanSelectBranch)
-{
-    <form method="get" class="row g-2 mb-3"><div class="col-auto"><label for="branchId" class="visually-hidden">Branch</label><select id="branchId" name="branchId" class="form-select"><option value="">All branches</option>@foreach (var branch in Model.Branches) { <option value="@branch.Id" selected="@(branch.Id == Model.Filters.BranchId)">@branch.Name</option> }</select></div><div class="col-auto"><button type="submit" class="btn btn-outline-primary">Apply</button></div></form>
-}
+
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item active" aria-current="page">作業予定</li>
+    </ol>
+</nav>
+
+<div class="mb-3">
+    <h1>作業予定</h1>
+    <p class="page-intro mb-0">日程、担当者、遅れている作業を確認できます。</p>
+</div>
+
+<form method="get" class="row g-2 mb-4" role="search">
+    @if (Model.CanSelectBranch)
+    {
+        <div class="col-md-4">
+            <label for="branch-filter" class="form-label">支店</label>
+            <select id="branch-filter" name="branchId" class="form-select">
+                <option value="">すべての支店</option>
+                @foreach (var branch in Model.Branches)
+                {
+                    <option value="@branch.Id" selected="@(branch.Id == Model.Filters.BranchId)">@branch.Name</option>
+                }
+            </select>
+        </div>
+    }
+    else
+    {
+        <input type="hidden" name="branchId" value="@Model.Filters.BranchId" />
+    }
+    <div class="col-md-4">
+        <label for="status" class="form-label">状態</label>
+        <select id="status" name="status" class="form-select">
+            <option value="">すべての状態</option>
+            @foreach (WorkOrderStatus status in Enum.GetValues<WorkOrderStatus>())
+            {
+                <option value="@status" selected="@(status == Model.Filters.Status)">@UiDisplayText.ForWorkOrderStatus(status)</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+        <div class="form-check mb-2">
+            <input id="overdue" name="overdue" value="true" type="checkbox" class="form-check-input" checked="@Model.Filters.Overdue" />
+            <label for="overdue" class="form-check-label">期限を過ぎた作業だけ</label>
+        </div>
+    </div>
+    <div class="col-12">
+        <button class="btn btn-primary" type="submit">この条件で探す</button>
+    </div>
+</form>
+
 @if (Model.Items.Count == 0)
 {
-    <p>No work orders in this scope.</p>
+    <p class="app-empty-state" role="status">条件に合う作業予定はまだありません。</p>
 }
 else
 {
-    <div class="table-responsive"><table class="table"><thead><tr><th>Customer</th><th>Site</th><th>Branch</th><th>Schedule</th><th>Technician</th><th>Status</th></tr></thead><tbody>@foreach (var item in Model.Items) { <tr><td><a href="/work-orders/@item.Id">@item.PartyName</a></td><td>@item.SiteName</td><td>@item.BranchName</td><td>@(item.ScheduledStartUtc?.ToString("u") ?? "Not scheduled")</td><td>@(item.AssignedUserName ?? "Not assigned")</td><td>@item.Status</td></tr> }</tbody></table></div>
+    <div class="responsive-records d-none d-xl-block">
+        <table class="table align-middle bg-white">
+            <thead>
+                <tr>
+                    <th scope="col">状態</th>
+                    <th scope="col">予定日時</th>
+                    <th scope="col">顧客</th>
+                    <th scope="col">現場</th>
+                    <th scope="col">担当者</th>
+                    <th scope="col">次の操作</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.Items)
+            {
+                <tr>
+                    <td><span class="badge text-bg-primary">@UiDisplayText.ForWorkOrderStatus(item.Status)</span></td>
+                    <td>@FormatSchedule(item.ScheduledStartUtc)</td>
+                    <th scope="row">
+                        <a href="/work-orders/@item.Id">@item.PartyName</a>
+                        <div class="small text-body-secondary">@item.BranchName</div>
+                    </th>
+                    <td>@item.SiteName</td>
+                    <td>@(item.AssignedUserName ?? "未設定")</td>
+                    <td><a class="btn btn-outline-primary btn-sm" href="/work-orders/@item.Id">詳しく見る</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <div class="row g-3 d-xl-none">
+    @foreach (var item in Model.Items)
+    {
+        <div class="col-12 col-md-6">
+            <article class="card task-card h-100">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                        <span class="badge text-bg-primary">@UiDisplayText.ForWorkOrderStatus(item.Status)</span>
+                        <span class="text-body-secondary">@FormatSchedule(item.ScheduledStartUtc)</span>
+                    </div>
+                    <h2 class="h5 card-title">@item.PartyName</h2>
+                    <p class="mb-1">現場: @item.SiteName</p>
+                    <p class="mb-1">担当者: @(item.AssignedUserName ?? "未設定")</p>
+                    <p class="mb-3">支店: @item.BranchName</p>
+                    <a class="btn btn-outline-primary" href="/work-orders/@item.Id">詳しく見る</a>
+                </div>
+            </article>
+        </div>
+    }
+    </div>
+}
+
+<nav aria-label="作業予定のページ" class="d-flex flex-wrap align-items-center gap-2 mt-3">
+    <span class="text-body-secondary">全@(Model.TotalCount)件</span>
+    <ul class="pagination mb-0">
+        @for (int pageNumber = 1; pageNumber <= Model.TotalPages; pageNumber++)
+        {
+            <li class="page-item @(pageNumber == Model.Page ? "active" : null)">
+                <a class="page-link" href="@Url.Action("Index", new { branchId = Model.Filters.BranchId, status = Model.Filters.Status, overdue = Model.Filters.Overdue ? true : (bool?)null, page = pageNumber, pageSize = Model.PageSize })">@pageNumber</a>
+            </li>
+        }
+    </ul>
+</nav>
+
+@functions {
+    private static string FormatSchedule(DateTime? scheduledStartUtc) =>
+        scheduledStartUtc.HasValue ? JapanTimeFormatter.FormatUtc(scheduledStartUtc.Value) : "未設定";
 }

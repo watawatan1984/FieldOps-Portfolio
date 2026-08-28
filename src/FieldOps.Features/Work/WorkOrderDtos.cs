@@ -8,6 +8,8 @@ namespace FieldOps.Features.Work;
 public sealed class WorkOrderSearchRequest
 {
     public Guid BranchId { get; init; }
+    public WorkOrderStatus? Status { get; init; }
+    public bool Overdue { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = WorkOrderQueries.DefaultPageSize;
 }

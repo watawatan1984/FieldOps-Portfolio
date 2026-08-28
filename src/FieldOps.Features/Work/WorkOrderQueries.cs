@@ -9,7 +9,8 @@ namespace FieldOps.Features.Work;
 public sealed class WorkOrderQueries(
     IFieldOpsDbContext dbContext,
     IFieldOpsUserDirectory userDirectory,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    TimeProvider timeProvider)
 {
     private const string FieldTechnicianRole = "Field Technician";
     private const string SystemAdministratorRole = "System Administrator";
@@ -31,6 +32,17 @@ public sealed class WorkOrderQueries(
         if (currentUser.Role == FieldTechnicianRole)
         {
             workOrders = workOrders.Where(workOrder => workOrder.AssignedUserId == currentUser.UserId);
+        }
+        if (request.Status.HasValue)
+        {
+            workOrders = workOrders.Where(workOrder => workOrder.Status == request.Status.Value);
+        }
+        if (request.Overdue)
+        {
+            DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
+            workOrders = workOrders.Where(workOrder =>
+                (workOrder.Status == WorkOrderStatus.Scheduled || workOrder.Status == WorkOrderStatus.InProgress) &&
+                workOrder.ScheduledStartUtc < utcNow);
         }
 
         int totalCount = await workOrders.CountAsync(cancellationToken);
@@ -80,49 +92,54 @@ public sealed class WorkOrderQueries(
         bool canCorrect,
         CancellationToken cancellationToken = default)
     {
-        var row = await dbContext.WorkOrders.AsNoTracking()
+        WorkOrder? workOrder = await dbContext.WorkOrders.AsNoTracking()
             .Include(workOrder => workOrder.Events)
-            .Where(workOrder => workOrder.Id == id)
-            .Select(workOrder => new
-            {
-                WorkOrder = workOrder,
-                PartyName = dbContext.Parties.Where(party => party.Id == workOrder.PartyId)
-                    .Select(party => party.OrganizationName ?? party.LastName + ", " + party.FirstName).Single(),
-                SiteName = dbContext.Parties.SelectMany(party => party.Sites)
-                    .Where(site => site.Id == workOrder.SiteId).Select(site => site.Name).Single(),
-                BranchName = dbContext.Branches.Where(branch => branch.Id == workOrder.BranchId)
-                    .Select(branch => branch.Name).Single(),
-                Events = workOrder.Events.OrderBy(workEvent => workEvent.OccurredAtUtc).ThenBy(workEvent => workEvent.Id)
-                    .Select(workEvent => new WorkEventSummary(workEvent.EventType, workEvent.OccurredAtUtc, workEvent.Summary)).ToList()
-            })
-            .SingleOrDefaultAsync(cancellationToken);
-        if (row is null) return null;
+            .SingleOrDefaultAsync(workOrder => workOrder.Id == id, cancellationToken);
+        if (workOrder is null) return null;
+
+        string partyName = await dbContext.Parties.AsNoTracking()
+            .Where(party => party.Id == workOrder.PartyId)
+            .Select(party => party.OrganizationName ?? party.LastName + ", " + party.FirstName)
+            .SingleAsync(cancellationToken);
+        string siteName = await dbContext.Parties.AsNoTracking().SelectMany(party => party.Sites)
+            .Where(site => site.Id == workOrder.SiteId)
+            .Select(site => site.Name)
+            .SingleAsync(cancellationToken);
+        string branchName = await dbContext.Branches.AsNoTracking()
+            .Where(branch => branch.Id == workOrder.BranchId)
+            .Select(branch => branch.Name)
+            .SingleAsync(cancellationToken);
+        IReadOnlyList<WorkEventSummary> events = workOrder.Events
+            .OrderBy(workEvent => workEvent.OccurredAtUtc)
+            .ThenBy(workEvent => workEvent.Id)
+            .Select(workEvent => new WorkEventSummary(workEvent.EventType, workEvent.OccurredAtUtc, workEvent.Summary))
+            .ToList();
 
         IReadOnlyList<FieldOpsUserOption> technicians = await userDirectory.GetUsersInRoleAsync(
-            row.WorkOrder.BranchId,
+            workOrder.BranchId,
             FieldTechnicianRole,
             cancellationToken);
-        string? assignedName = row.WorkOrder.AssignedUserId is null
+        string? assignedName = workOrder.AssignedUserId is null
             ? null
-            : technicians.FirstOrDefault(user => user.Id == row.WorkOrder.AssignedUserId)?.DisplayName ?? "Assigned technician";
+            : technicians.FirstOrDefault(user => user.Id == workOrder.AssignedUserId)?.DisplayName ?? "Assigned technician";
         IReadOnlyList<WorkOrderStatus> allowedTransitions = canUpdate
-            ? row.WorkOrder.GetAllowedTransitions()
+            ? workOrder.GetAllowedTransitions()
             : [];
         return new(
-            row.WorkOrder.Id,
-            row.WorkOrder.BranchId,
-            row.PartyName,
-            row.SiteName,
-            row.BranchName,
+            workOrder.Id,
+            workOrder.BranchId,
+            partyName,
+            siteName,
+            branchName,
             assignedName,
-            row.WorkOrder.Status,
-            row.WorkOrder.ScheduledStartUtc,
-            row.WorkOrder.Version,
+            workOrder.Status,
+            workOrder.ScheduledStartUtc,
+            workOrder.Version,
             canManage,
             canUpdate,
             canCorrect,
             allowedTransitions,
-            row.Events);
+            events);
     }
 
     public Task<WorkOrderEditInput?> GetEditAsync(Guid id, CancellationToken cancellationToken = default) =>
@@ -167,4 +184,5 @@ public sealed class WorkOrderQueries(
             cancellationToken);
         return new(row.PartyName, row.SiteName, row.BranchName, technicians);
     }
+
 }

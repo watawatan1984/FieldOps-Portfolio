@@ -87,7 +87,7 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task ManagerSchedulesAndAssignsWorkUsingUtcAndBranchTechnicianOptions()
+    public async Task ManagerSchedulesAndAssignsWorkUsingJapanTimeAndBranchTechnicianOptions()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using FieldOpsWebApplicationFactory application = new(connectionString);
@@ -97,11 +97,14 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         Guid workOrderId = await CreateThroughHttpAsync(client, seed.WonOpportunityId);
         using HttpResponseMessage plannedDetails = await client.GetAsync($"/work-orders/{workOrderId}");
         string plannedHtml = await plannedDetails.Content.ReadAsStringAsync();
-        Assert.Contains("Schedule and assign", plannedHtml);
-        Assert.DoesNotContain("Move to Scheduled", plannedHtml);
+        Assert.Contains("日程と担当者を決める", plannedHtml);
+        Assert.DoesNotContain("作業を開始する", plannedHtml);
         using HttpResponseMessage editPage = await client.GetAsync($"/work-orders/{workOrderId}/edit");
         string editHtml = await editPage.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, editPage.StatusCode);
+        Assert.DoesNotContain("UTC", editHtml);
+        Assert.DoesNotContain("ISO 8601", editHtml);
+        Assert.DoesNotContain("ending in Z", editHtml);
         string token = ExtractAntiforgeryToken(editHtml);
         string version = GetInputValue(editHtml, "Version");
 
@@ -112,7 +115,8 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
                 ["Id"] = workOrderId.ToString(),
                 ["Version"] = version,
                 ["AssignedUserId"] = seed.CentralTechnicianUserId,
-                ["ScheduledStartUtc"] = "2026-09-20T01:30:00Z",
+                ["ScheduledDate"] = "2026-09-20",
+                ["ScheduledTime"] = "10:30",
                 ["__RequestVerificationToken"] = token
             }));
 
@@ -160,14 +164,18 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
             {
                 ["Version"] = version,
                 ["EventType"] = WorkEventType.Completion.ToString(),
-                ["OccurredAtUtc"] = "2026-08-11T03:15:00Z",
+                ["OccurredDate"] = "2026-08-11",
+                ["OccurredTime"] = "12:15",
                 ["Summary"] = "Fictional service completed and site secured.",
                 ["__RequestVerificationToken"] = token
             }));
         Assert.Equal(HttpStatusCode.Redirect, eventAdded.StatusCode);
 
         (token, version, string readyToCompleteHtml) = await GetPageFormAsync(client, $"/work-orders/{id}");
-        Assert.Contains("Move to Completed", readyToCompleteHtml);
+        readyToCompleteHtml = WebUtility.HtmlDecode(readyToCompleteHtml);
+        Assert.Contains("作業を完了する", readyToCompleteHtml);
+        Assert.Contains("data-confirm-action", readyToCompleteHtml);
+        Assert.Contains("data-confirm-target", readyToCompleteHtml);
         using HttpResponseMessage completed = await client.PostAsync(
             $"/work-orders/{id}/transition",
             TransitionForm(version, WorkOrderStatus.Completed, token));
@@ -222,6 +230,45 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         Assert.DoesNotContain("架空中央支店 未処理作業", decodedTechnicianHtml);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/work-orders/{assignedId}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/work-orders/{centralUnassignedId}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task WorkOrderIndexFiltersByStatusAndOverdueUsingInjectedUtcClock()
+    {
+        DateTimeOffset currentUtc = new(2026, 9, 20, 2, 0, 0, TimeSpan.Zero);
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(
+            connectionString,
+            services => services.AddSingleton<TimeProvider>(new FixedTimeProvider(currentUtc)));
+        using HttpClient client = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+        Guid scheduledId = await CreateThroughHttpAsync(client, seed.WonOpportunityId);
+        await ScheduleThroughHttpAsync(client, scheduledId, seed.CentralTechnicianUserId);
+        (Guid plannedId, _) = await AddScopedWorkOrdersAsync(application, seed.BranchId);
+
+        using HttpResponseMessage scheduled = await client.GetAsync(
+            $"/work-orders?branchId={seed.BranchId}&status={WorkOrderStatus.Scheduled}");
+        string scheduledHtml = WebUtility.HtmlDecode(await scheduled.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, scheduled.StatusCode);
+        Assert.Contains("架空果樹園設備", scheduledHtml);
+        Assert.DoesNotContain("架空中央支店 未処理作業", scheduledHtml);
+        Assert.Contains("予定あり", scheduledHtml);
+
+        using HttpResponseMessage overdue = await client.GetAsync(
+            $"/work-orders?branchId={seed.BranchId}&overdue=true");
+        string overdueHtml = WebUtility.HtmlDecode(await overdue.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, overdue.StatusCode);
+        Assert.Contains("架空果樹園設備", overdueHtml);
+        Assert.DoesNotContain("架空中央支店 未処理作業", overdueHtml);
+
+        using HttpResponseMessage planned = await client.GetAsync(
+            $"/work-orders?branchId={seed.BranchId}&status={WorkOrderStatus.Planned}");
+        string plannedHtml = WebUtility.HtmlDecode(await planned.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, planned.StatusCode);
+        Assert.DoesNotContain("架空果樹園設備", plannedHtml);
+        Assert.Contains("架空中央支店 未処理作業", plannedHtml);
+        Assert.Contains(plannedId.ToString(), plannedHtml);
     }
 
     [Fact]
@@ -296,7 +343,8 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
                 ["Id"] = id.ToString(),
                 ["Version"] = version,
                 ["AssignedUserId"] = seed.CentralTechnicianUserId,
-                ["ScheduledStartUtc"] = "2026-09-20T01:30:00",
+                ["ScheduledDate"] = "not-a-date",
+                ["ScheduledTime"] = "10:30",
                 ["__RequestVerificationToken"] = token
             }));
         Assert.Equal(HttpStatusCode.BadRequest, nonUtc.StatusCode);
@@ -348,14 +396,14 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
 
         using HttpResponseMessage response = await client.PostAsync(
             $"/work-orders/{id}/edit",
-            ScheduleForm(id, staleVersion, "stale-posted-technician", token));
+            ScheduleForm(id, staleVersion, seed.CentralTechnicianUserId, token));
         string html = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains("Review the latest version", html);
         Assert.NotEqual(staleVersion, GetInputValue(html, "Version"));
-        Assert.DoesNotContain("stale-posted-technician", html);
-        Assert.Empty(GetInputValue(html, "ScheduledStartUtc"));
+        Assert.Equal("2026-09-20", GetInputValue(html, "ScheduledDate"));
+        Assert.Equal("10:30", GetInputValue(html, "ScheduledTime"));
         Assert.Matches(
             $"<option(?=[^>]*value=\"{Regex.Escape(seed.CentralTechnicianUserId)}\")(?=[^>]*selected)[^>]*>",
             html);
@@ -386,7 +434,7 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         Assert.DoesNotContain($"value=\"{WorkEventType.Completion}\"", addHtml);
         using HttpResponseMessage corrected = await client.PostAsync(
             $"/work-orders/{id}/events/add",
-            EventForm(version, WorkEventType.Correction, "Fictional correction: completion reference clarified.", token, "2026-08-11T04:15:00Z"));
+            EventForm(version, WorkEventType.Correction, "Fictional correction: completion reference clarified.", token, "2026-08-11", "13:15"));
         Assert.Equal(HttpStatusCode.Redirect, corrected.StatusCode);
         using HttpResponseMessage details = await client.GetAsync($"/work-orders/{id}");
         string detailsHtml = await details.Content.ReadAsStringAsync();
@@ -430,7 +478,7 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
 
         using HttpResponseMessage response = await client.PostAsync(
             $"/work-orders/{id}/events/add",
-            EventForm(version, WorkEventType.Completion, "Fictional future completion evidence.", token, "2026-09-20T03:31:00Z"));
+            EventForm(version, WorkEventType.Completion, "Fictional future completion evidence.", token, "2026-09-20", "12:31"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
@@ -686,7 +734,8 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
                 ["Id"] = id.ToString(),
                 ["Version"] = version,
                 ["AssignedUserId"] = technicianUserId,
-                ["ScheduledStartUtc"] = "2026-09-20T01:30:00Z",
+                ["ScheduledDate"] = "2026-09-20",
+                ["ScheduledTime"] = "10:30",
                 ["__RequestVerificationToken"] = token
             }));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
@@ -732,7 +781,8 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
             ["Id"] = id.ToString(),
             ["Version"] = version,
             ["AssignedUserId"] = technicianUserId,
-            ["ScheduledStartUtc"] = "2026-09-20T01:30:00Z",
+            ["ScheduledDate"] = "2026-09-20",
+            ["ScheduledTime"] = "10:30",
             ["__RequestVerificationToken"] = token
         });
 
@@ -741,12 +791,14 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         WorkEventType type,
         string summary,
         string token,
-        string occurredAtUtc = "2026-08-11T03:15:00Z") =>
+        string occurredDate = "2026-08-11",
+        string occurredTime = "12:15") =>
         new(new Dictionary<string, string>
         {
             ["Version"] = version,
             ["EventType"] = type.ToString(),
-            ["OccurredAtUtc"] = occurredAtUtc,
+            ["OccurredDate"] = occurredDate,
+            ["OccurredTime"] = occurredTime,
             ["Summary"] = summary,
             ["__RequestVerificationToken"] = token
         });

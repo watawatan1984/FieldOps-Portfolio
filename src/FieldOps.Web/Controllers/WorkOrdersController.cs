@@ -4,6 +4,8 @@ using FieldOps.Domain.Common;
 using FieldOps.Features.Work;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Web.Authorization;
+using FieldOps.Web.Formatting;
+using FieldOps.Web.Models;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -98,13 +100,13 @@ public sealed class WorkOrdersController(
             return RedirectToAction(nameof(Details), new { id });
         }
         ViewData["EditorOptions"] = await queries.GetEditorOptionsAsync(id, cancellationToken);
-        return View(input);
+        return View(WorkOrderScheduleForm.FromCommand(input));
     }
 
     [HttpPost("{id:guid}/edit")]
     [Authorize(Policy = Policies.ManageWorkOrders)]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit([FromRoute] Guid id, WorkOrderEditInput input, CancellationToken cancellationToken)
+    public async Task<IActionResult> Edit([FromRoute] Guid id, WorkOrderScheduleForm input, CancellationToken cancellationToken)
     {
         if (id != input.Id) return BadRequest();
         IActionResult? denied = await AuthorizeWorkOrderAsync(id, BranchResourceAction.ManageWorkOrders, cancellationToken);
@@ -127,7 +129,7 @@ public sealed class WorkOrdersController(
         }
         try
         {
-            await commands.ScheduleAndAssignAsync(input, cancellationToken);
+            await commands.ScheduleAndAssignAsync(input.ToCommand(), cancellationToken);
             return Redirect($"/work-orders/{id}");
         }
         catch (WorkOrderConcurrencyException)
@@ -144,7 +146,8 @@ public sealed class WorkOrdersController(
                     cancellationToken,
                     "This work order is no longer planned and cannot be scheduled again.");
             }
-            input = latest;
+            input.Version = latest.Version;
+            input.Status = latest.Status;
             ModelState.Clear();
             ModelState.AddModelError(string.Empty, "This work order changed after you opened the form. Review the latest version and retry.");
             Response.StatusCode = StatusCodes.Status409Conflict;
@@ -192,17 +195,19 @@ public sealed class WorkOrdersController(
         if (eventDenied is not null) return eventDenied;
         WorkOrderEditInput? workOrder = await queries.GetEditAsync(id, cancellationToken);
         if (workOrder is null) return NotFound();
-        return View(new WorkEventInput
+        DateTime utcNow = DateTime.UtcNow;
+        return View(new WorkEventForm
         {
             Version = workOrder.Version,
-            OccurredAtUtc = DateTime.UtcNow
+            OccurredDate = JapanTimeFormatter.ToJapanDate(utcNow),
+            OccurredTime = JapanTimeFormatter.ToJapanTime(utcNow)
         });
     }
 
     [HttpPost("{id:guid}/events/add")]
     [Authorize(Policy = Policies.UpdateWorkOrders)]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddEvent(Guid id, WorkEventInput input, CancellationToken cancellationToken)
+    public async Task<IActionResult> AddEvent(Guid id, WorkEventForm input, CancellationToken cancellationToken)
     {
         IActionResult? denied = await AuthorizeWorkOrderAsync(id, BranchResourceAction.UpdateWorkOrders, cancellationToken);
         if (denied is not null) return denied;
@@ -215,7 +220,7 @@ public sealed class WorkOrdersController(
         }
         try
         {
-            await commands.AddEventAsync(id, input, cancellationToken);
+            await commands.AddEventAsync(id, input.ToCommand(), cancellationToken);
             return Redirect($"/work-orders/{id}");
         }
         catch (WorkOrderConcurrencyException)

@@ -1,25 +1,48 @@
-@model FieldOps.Features.Work.WorkOrderEditInput
+@model WorkOrderScheduleForm
 @using FieldOps.Features.Work
 @{
-    ViewData["Title"] = "Schedule work order";
+    ViewData["Title"] = "日程と担当者を決める";
     WorkOrderEditorOptions options = (WorkOrderEditorOptions)ViewData["EditorOptions"]!;
 }
-<h1>Schedule work order</h1>
-<p>@options.PartyName · @options.SiteName · @options.BranchName</p>
+
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item"><a href="/work-orders">作業予定</a></li>
+        <li class="breadcrumb-item active" aria-current="page">日程と担当者</li>
+    </ol>
+</nav>
+
+<div class="mb-3">
+    <h1>日程と担当者を決める</h1>
+    <p class="page-intro mb-1">@options.PartyName · @options.SiteName</p>
+    <p class="text-body-secondary mb-0">担当支店: <strong>@options.BranchName</strong></p>
+</div>
+
 <div asp-validation-summary="All" class="text-danger" role="alert"></div>
-<form method="post">
+<form method="post" class="row g-3">
     <input asp-for="Id" type="hidden" />
     <input asp-for="Version" type="hidden" />
-    <div class="mb-3">
+    <input asp-for="Status" type="hidden" />
+    <div class="col-md-6">
         <label asp-for="AssignedUserId" class="form-label"></label>
         <select asp-for="AssignedUserId" class="form-select">
-            <option value="">Select technician</option>
+            <option value="">担当者を選択</option>
             @foreach (var technician in options.Technicians)
             {
                 <option value="@technician.Id">@technician.DisplayName</option>
             }
         </select>
     </div>
-    <div class="mb-3"><label asp-for="ScheduledStartUtc" class="form-label"></label><input asp-for="ScheduledStartUtc" type="text" class="form-control" placeholder="2026-09-20T01:30:00Z" /><div class="form-text">Enter an ISO 8601 UTC timestamp ending in Z.</div></div>
-    <button type="submit" class="btn btn-primary">Schedule and assign</button>
+    <div class="col-md-3">
+        <label asp-for="ScheduledDate" class="form-label"></label>
+        <input asp-for="ScheduledDate" type="date" class="form-control" />
+    </div>
+    <div class="col-md-3">
+        <label asp-for="ScheduledTime" class="form-label"></label>
+        <input asp-for="ScheduledTime" type="time" class="form-control" />
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">日程と担当者を保存する</button>
+    </div>
 </form>
