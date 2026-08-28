@@ -14,10 +14,20 @@ public sealed class JapanesePresentationTests
         Assert.Equal("完了記録", UiDisplayText.ForWorkEventType(WorkEventType.Completion));
         Assert.Equal("作業予定", UiDisplayText.ForAuditArea("WorkOrder"));
         Assert.Equal("日程と担当者を設定", UiDisplayText.ForAuditAction("ScheduledAndAssigned"));
+        Assert.Equal("共有", UiDisplayText.ForAuditAction("Shared"));
         Assert.Equal("成功", UiDisplayText.ForAuditOutcome("Success"));
         Assert.Equal("状態、担当者、予定日時", UiDisplayText.ForAuditFields("Status,AssignedUserId,ScheduledStartUtc"));
         Assert.Equal("Proposed", SalesOpportunityStatus.Proposed.ToString());
         Assert.Equal("InProgress", WorkOrderStatus.InProgress.ToString());
+    }
+
+    [Fact]
+    public void DisplayTextMapsStructuredAuditOutcomesWithoutExposingTechnicalDetails()
+    {
+        Assert.Equal("開始", UiDisplayText.ForAuditOutcome("Started;durationMs=0;correlationId=demo-reset-123"));
+        Assert.Equal("完了", UiDisplayText.ForAuditOutcome("Completed;durationMs=1234;correlationId=demo-reset-123"));
+        Assert.Equal("失敗", UiDisplayText.ForAuditOutcome("Failed;durationMs=567;correlationId=demo-reset-123"));
+        Assert.Equal("未定義", UiDisplayText.ForAuditOutcome("Unknown;durationMs=1;correlationId=demo-reset-123"));
     }
 
     [Fact]

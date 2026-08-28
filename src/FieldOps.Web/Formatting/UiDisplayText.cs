@@ -73,18 +73,25 @@ public static class UiDisplayText
         "ResetCompleted" => "リセット完了",
         "ResetFailed" => "リセット失敗",
         "PostResetMutation" => "リセット後更新",
+        "Shared" => "共有",
         _ => "未定義"
     };
 
-    public static string ForAuditOutcome(string outcome) => outcome switch
+    public static string ForAuditOutcome(string outcome)
     {
-        "Success" => "成功",
-        "Failure" => "失敗",
-        "Failed" => "失敗",
-        "Completed" => "完了",
-        "Running" => "実行中",
-        _ => "未定義"
-    };
+        string state = outcome.Split(';', 2, StringSplitOptions.TrimEntries)[0];
+
+        return state switch
+        {
+            "Success" => "成功",
+            "Failure" => "失敗",
+            "Started" => "開始",
+            "Failed" => "失敗",
+            "Completed" => "完了",
+            "Running" => "実行中",
+            _ => "未定義"
+        };
+    }
 
     public static string ForAuditFields(string fields)
     {
