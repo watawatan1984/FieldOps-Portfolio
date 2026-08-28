@@ -1,0 +1,14 @@
+@model FieldOps.Web.Controllers.StatusPageViewModel
+@{
+    ViewData["Title"] = Model.Title;
+}
+
+<section class="app-empty-state">
+    <p class="text-muted mb-2">エラー @Model.StatusCode</p>
+    <h1>@Model.Title</h1>
+    <p>@Model.Description</p>
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-primary" asp-controller="Home" asp-action="Index">@Model.PrimaryActionLabel</a>
+        <a class="btn btn-outline-secondary" href="javascript:history.back()">前の画面へ戻る</a>
+    </div>
+</section>

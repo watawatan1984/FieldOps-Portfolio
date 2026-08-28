@@ -117,6 +117,24 @@ body {
   padding: 1rem;
 }
 
+.branch-progress-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+}
+
+.branch-progress-cards dd {
+  margin-bottom: .35rem;
+  text-align: right;
+}
+
+td,
+th,
+.card,
+.page-intro {
+  overflow-wrap: anywhere;
+}
+
 @media (min-width: 992px) {
   .app-shell {
     display: grid;

@@ -79,13 +79,13 @@ public sealed class WorkHistorySearchViewModel : IValidatableObject
         if (ScheduledFrom > ScheduledTo)
         {
             yield return new ValidationResult(
-                "Scheduled from must be on or before scheduled to.",
+                "予定日の開始日は終了日以前にしてください。",
                 [nameof(ScheduledFrom), nameof(ScheduledTo)]);
         }
         if (CompletedFrom > CompletedTo)
         {
             yield return new ValidationResult(
-                "Completed from must be on or before completed to.",
+                "完了日の開始日は終了日以前にしてください。",
                 [nameof(CompletedFrom), nameof(CompletedTo)]);
         }
     }

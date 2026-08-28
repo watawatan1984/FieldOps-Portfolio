@@ -244,9 +244,16 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
             classification.Category,
             classification.SafeType);
         context.Response.StatusCode = classification.StatusCode;
+        if (AcceptsHtml(context.Request))
+        {
+            await SafeHtmlErrorResponse.WriteAsync(context, classification.StatusCode, context.TraceIdentifier);
+            return;
+        }
+
         await context.Response.WriteAsJsonAsync(new { correlationId = context.TraceIdentifier });
     }
 });
+app.UseStatusCodePagesWithReExecute("/status/{0}");
 app.UseAuthorization();
 app.UseRateLimiter();
 
@@ -266,6 +273,9 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
 
+
+static bool AcceptsHtml(HttpRequest request) =>
+    request.Headers.Accept.Any(value => value?.Contains("text/html", StringComparison.OrdinalIgnoreCase) == true);
 
 app.Run();
 

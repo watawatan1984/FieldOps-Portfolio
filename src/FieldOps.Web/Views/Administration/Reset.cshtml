@@ -6,12 +6,12 @@
 <div class="container py-4">
     <nav aria-label="Breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">Dashboard</a></li>
+            <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">ホーム</a></li>
             <li class="breadcrumb-item active" aria-current="page">初期化</li>
         </ol>
     </nav>
-    <h1>初期化</h1>
-    <p>デモデータを承認済みの固定データへ戻します。自動実行や定期実行は行いません。</p>
+    <h1>デモデータを初期状態に戻す</h1>
+    <p class="page-intro">この画面では、変更された架空デモデータを承認済みの固定データへ戻します。利用者、支店、顧客、営業案件、作業予定、作業履歴が初期状態に復元されます。</p>
 
     @if (Model.Result is not null)
     {
@@ -34,8 +34,8 @@
             <input asp-for="Confirmation" class="form-control" autocomplete="off" />
             <span asp-validation-for="Confirmation" class="text-danger"></span>
         </div>
-        <button type="submit" class="btn btn-danger" data-demo-reset-submit>初期化を実行</button>
-        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">キャンセル</a>
+        <button type="submit" class="btn btn-danger" data-demo-reset-submit data-confirm-action data-confirm-title="デモデータを初期状態に戻しますか" data-confirm-target="架空デモデータ" data-confirm-message="変更されたデモデータを削除し、固定データへ戻します。" data-confirm-impact="実行中は画面を操作できません。完了後、ホームへ戻ります。">初期化を実行</button>
+        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">やめる</a>
     </form>
 </div>
 

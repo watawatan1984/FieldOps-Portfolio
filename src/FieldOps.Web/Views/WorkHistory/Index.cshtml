@@ -1,7 +1,7 @@
 @model FieldOps.Web.Models.WorkHistorySearchViewModel
 @using FieldOps.Domain.Enums
 @{
-    ViewData["Title"] = "Work history";
+    ViewData["Title"] = "作業履歴";
     string PageUrl(int page) => Url.Action("Index", "WorkHistory", new
     {
         Model.BranchId,
@@ -20,52 +20,164 @@
         PageSize = Model.EffectivePageSize
     })!;
 }
-<h1>Work history</h1>
-<form method="get" class="row g-2 mb-4">
-    @if (Model.CanSelectBranch)
-    {
-        <div class="col-md-3"><label asp-for="BranchId" class="form-label">Branch</label><select asp-for="BranchId" class="form-select"><option value="">All branches</option>@foreach (var option in Model.Branches) { <option value="@option.Id">@option.Name</option> }</select></div>
-    }
-    else if (Model.BranchId.HasValue)
-    {
-        <input asp-for="BranchId" type="hidden" />
-    }
-    <div class="col-md-3"><label asp-for="CustomerId" class="form-label">Customer</label><select asp-for="CustomerId" class="form-select"><option value="">All customers</option>@foreach (var option in Model.Customers) { <option value="@option.Id">@option.Name</option> }</select></div>
-    <div class="col-md-3"><label asp-for="BusinessPartnerId" class="form-label">Business partner</label><select asp-for="BusinessPartnerId" class="form-select"><option value="">All business partners</option>@foreach (var option in Model.BusinessPartners) { <option value="@option.Id">@option.Name</option> }</select></div>
-    <div class="col-md-3"><label asp-for="SiteId" class="form-label">Site</label><select asp-for="SiteId" class="form-select"><option value="">All sites</option>@foreach (var option in Model.Sites) { <option value="@option.Id">@option.Name</option> }</select></div>
-    <div class="col-md-3"><label asp-for="WorkStatus" class="form-label">Work status</label><select asp-for="WorkStatus" class="form-select"><option value="">All statuses</option>@foreach (var status in Enum.GetValues<WorkOrderStatus>()) { <option value="@status">@status</option> }</select></div>
-    <div class="col-md-3"><label asp-for="EventType" class="form-label">Event type</label><select asp-for="EventType" class="form-select"><option value="">All event types</option>@foreach (var eventType in Enum.GetValues<WorkEventType>()) { <option value="@eventType">@eventType</option> }</select></div>
-    <div class="col-md-3"><label asp-for="TechnicianId" class="form-label">Technician</label><select asp-for="TechnicianId" class="form-select"><option value="">All technicians</option>@foreach (var option in Model.Technicians) { <option value="@option.Id">@option.DisplayName</option> }</select></div>
-    <div class="col-md-3"><label asp-for="ScheduledFrom" class="form-label">Scheduled from</label><input asp-for="ScheduledFrom" type="date" class="form-control" /></div>
-    <div class="col-md-3"><label asp-for="ScheduledTo" class="form-label">Scheduled to</label><input asp-for="ScheduledTo" type="date" class="form-control" /></div>
-    <div class="col-md-3"><label asp-for="CompletedFrom" class="form-label">Completed from</label><input asp-for="CompletedFrom" type="date" class="form-control" /></div>
-    <div class="col-md-3"><label asp-for="CompletedTo" class="form-label">Completed to</label><input asp-for="CompletedTo" type="date" class="form-control" /></div>
-    <div class="col-md-3"><label asp-for="Keyword" class="form-label">Keyword</label><input asp-for="Keyword" class="form-control" /></div>
+
+<h1>作業履歴</h1>
+<p class="page-intro">期間、状態、キーワードで過去の作業を探せます。支店や担当者などの細かい条件は必要なときだけ追加してください。</p>
+
+<form method="get" class="mb-4">
+    <div class="row g-2">
+        <div class="col-md-3">
+            <label asp-for="ScheduledFrom" class="form-label">予定日（開始）</label>
+            <input asp-for="ScheduledFrom" type="date" class="form-control" />
+        </div>
+        <div class="col-md-3">
+            <label asp-for="ScheduledTo" class="form-label">予定日（終了）</label>
+            <input asp-for="ScheduledTo" type="date" class="form-control" />
+        </div>
+        <div class="col-md-3">
+            <label asp-for="CompletedFrom" class="form-label">完了日（開始）</label>
+            <input asp-for="CompletedFrom" type="date" class="form-control" />
+        </div>
+        <div class="col-md-3">
+            <label asp-for="CompletedTo" class="form-label">完了日（終了）</label>
+            <input asp-for="CompletedTo" type="date" class="form-control" />
+        </div>
+        <div class="col-md-3">
+            <label asp-for="WorkStatus" class="form-label">状態</label>
+            <select asp-for="WorkStatus" class="form-select">
+                <option value="">すべての状態</option>
+                @foreach (var status in Enum.GetValues<WorkOrderStatus>())
+                {
+                    <option value="@status">@UiDisplayText.ForWorkOrderStatus(status)</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Keyword" class="form-label">キーワード</label>
+            <input asp-for="Keyword" class="form-control" placeholder="顧客名、現場名、作業記録で検索" />
+        </div>
+        <div class="col-md-3 align-self-end">
+            <button type="submit" class="btn btn-primary w-100">検索する</button>
+        </div>
+    </div>
+
+    <details class="details-disclosure mt-3">
+        <summary>条件を追加する</summary>
+        <div class="row g-2 mt-2">
+            @if (Model.CanSelectBranch)
+            {
+                <div class="col-md-3">
+                    <label asp-for="BranchId" class="form-label">支店</label>
+                    <select asp-for="BranchId" class="form-select">
+                        <option value="">すべての支店</option>
+                        @foreach (var option in Model.Branches)
+                        {
+                            <option value="@option.Id">@option.Name</option>
+                        }
+                    </select>
+                </div>
+            }
+            else if (Model.BranchId.HasValue)
+            {
+                <input asp-for="BranchId" type="hidden" />
+            }
+            <div class="col-md-3">
+                <label asp-for="CustomerId" class="form-label">顧客</label>
+                <select asp-for="CustomerId" class="form-select">
+                    <option value="">すべての顧客</option>
+                    @foreach (var option in Model.Customers)
+                    {
+                        <option value="@option.Id">@option.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label asp-for="BusinessPartnerId" class="form-label">協力会社</label>
+                <select asp-for="BusinessPartnerId" class="form-select">
+                    <option value="">すべての協力会社</option>
+                    @foreach (var option in Model.BusinessPartners)
+                    {
+                        <option value="@option.Id">@option.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label asp-for="SiteId" class="form-label">現場</label>
+                <select asp-for="SiteId" class="form-select">
+                    <option value="">すべての現場</option>
+                    @foreach (var option in Model.Sites)
+                    {
+                        <option value="@option.Id">@option.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label asp-for="EventType" class="form-label">記録種別</label>
+                <select asp-for="EventType" class="form-select">
+                    <option value="">すべての記録種別</option>
+                    @foreach (var eventType in Enum.GetValues<WorkEventType>())
+                    {
+                        <option value="@eventType">@UiDisplayText.ForWorkEventType(eventType)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label asp-for="TechnicianId" class="form-label">担当者</label>
+                <select asp-for="TechnicianId" class="form-select">
+                    <option value="">すべての担当者</option>
+                    @foreach (var option in Model.Technicians)
+                    {
+                        <option value="@option.Id">@option.DisplayName</option>
+                    }
+                </select>
+            </div>
+        </div>
+    </details>
     <input name="PageSize" value="@Model.EffectivePageSize" type="hidden" />
-    <div class="col-md-2 align-self-end"><button type="submit" class="btn btn-primary">Search</button></div>
 </form>
+
 @if (Model.Items.Count == 0)
 {
-    <div class="alert alert-info" role="status">No work history matches these filters.</div>
+    <div class="app-empty-state" role="status">条件に合う作業履歴はありません。条件を減らすか、期間を広げてください。</div>
 }
 else
 {
-    <p>@Model.TotalCount result(s)</p>
-    <div class="table-responsive"><table class="table"><thead><tr><th>Customer</th><th>Site</th><th>Branch</th><th>Scheduled</th><th>Completed</th><th>Technician</th><th>Status</th></tr></thead><tbody>
-    @foreach (var item in Model.Items)
-    {
-        <tr><td><a href="/work-orders/@item.Id">@item.CustomerName</a></td><td>@item.SiteName</td><td>@item.BranchName</td><td>@(item.ScheduledStartUtc?.ToString("u") ?? "Not scheduled")</td><td>@(item.CompletionDateUtc?.ToString("u") ?? "Not completed")</td><td>@(item.AssignedUserName ?? "Not assigned")</td><td>@item.Status</td></tr>
-    }
-    </tbody></table></div>
+    <p>@(Model.TotalCount)件を表示</p>
+    <div class="responsive-records">
+        <table class="table align-middle">
+            <thead>
+                <tr><th>顧客</th><th>現場</th><th>支店</th><th>予定日</th><th>完了日</th><th>担当者</th><th>状態</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.Items)
+            {
+                <tr>
+                    <td><a href="/work-orders/@item.Id">@item.CustomerName</a></td>
+                    <td>@item.SiteName</td>
+                    <td>@item.BranchName</td>
+                    <td>@(item.ScheduledStartUtc.HasValue ? JapanTimeFormatter.FormatUtc(item.ScheduledStartUtc.Value) : "未定")</td>
+                    <td>@(item.CompletionDateUtc.HasValue ? JapanTimeFormatter.FormatUtc(item.CompletionDateUtc.Value) : "未完了")</td>
+                    <td>@(item.AssignedUserName ?? "未割当")</td>
+                    <td>@UiDisplayText.ForWorkOrderStatus(item.Status)</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
 }
+
 @if (Model.TotalPages > 1)
 {
     int firstPage = Math.Max(1, Model.Page - 2);
     int lastPage = Math.Min(Model.TotalPages, Model.Page + 2);
-    <nav aria-label="Work history pages"><ul class="pagination">
+    <nav aria-label="作業履歴のページ">
+        <ul class="pagination">
         @for (int page = firstPage; page <= lastPage; page++)
         {
-            <li class="page-item @(page == Model.Page ? "active" : null)"><a class="page-link" href="@PageUrl(page)">@(page)</a></li>
+            <li class="page-item @(page == Model.Page ? "active" : null)">
+                <a class="page-link" href="@PageUrl(page)">@(page)</a>
+            </li>
         }
-    </ul></nav>
+        </ul>
+    </nav>
 }

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -81,6 +82,55 @@ public sealed class FailurePathTests(PostgresFixture postgres)
         Assert.DoesNotContain(secret, body, StringComparison.Ordinal);
         AssertSecurityHeaders(response);
         AssertRequestOutcome(logs, "application-timeout-test", 500, secret);
+    }
+
+    [Fact]
+    public async Task HtmlFailuresReturnJapaneseRecoveryPageWithoutLeakingExceptionDetails()
+    {
+        const string secret = "html-private-stack-secret";
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = CreateHttpsClient(application);
+
+        using HttpRequestMessage request = new(HttpMethod.Get, $"/failure-probe/timeout?detail={secret}");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+        request.Headers.Add("X-Correlation-ID", "html-correlation-test");
+        using HttpResponseMessage response = await client.SendAsync(request);
+        string body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Contains("<html lang=\"ja\">", body, StringComparison.Ordinal);
+        Assert.Contains("処理を完了できませんでした", body, StringComparison.Ordinal);
+        Assert.Contains("html-correlation-test", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, body, StringComparison.Ordinal);
+        Assert.DoesNotContain("TimeoutException", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(" at ", body, StringComparison.Ordinal);
+        AssertSecurityHeaders(response);
+    }
+
+    [Fact]
+    public async Task StatusCodePagesRenderSafeJapaneseRecoveryOnlyForForbiddenAndNotFound()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = CreateHttpsClient(application);
+        await LoginAsAdministratorAsync(client);
+        using HttpResponseMessage missing = await client.GetAsync("/definitely-missing-page");
+        string missingHtml = await missing.Content.ReadAsStringAsync();
+        string decodedMissingHtml = WebUtility.HtmlDecode(missingHtml);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+        using HttpResponseMessage forbidden = await client.GetAsync("/administration/reset");
+        string forbiddenHtml = await forbidden.Content.ReadAsStringAsync();
+        string decodedForbiddenHtml = WebUtility.HtmlDecode(forbiddenHtml);
+        using HttpResponseMessage unexpected = await client.GetAsync("/status/500");
+
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Contains("指定された情報が見つかりません", decodedMissingHtml, StringComparison.Ordinal);
+        Assert.Contains("前の画面へ戻る", decodedMissingHtml, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        Assert.Contains("この操作を行う権限がありません", decodedForbiddenHtml, StringComparison.Ordinal);
+        Assert.Contains("前の画面へ戻る", decodedForbiddenHtml, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.InternalServerError, unexpected.StatusCode);
     }
 
     [Fact]
@@ -230,10 +280,15 @@ public sealed class FailurePathTests(PostgresFixture postgres)
 
     private static async Task LoginAsAdministratorAsync(HttpClient client)
     {
+        await LoginAsAsync(client, DemoRoleNames.SystemAdministrator);
+    }
+
+    private static async Task LoginAsAsync(HttpClient client, string role)
+    {
         string html = await client.GetStringAsync("/demo-login");
         string roleToken = Regex.Match(
             html,
-            $"data-role=\"{Regex.Escape(DemoRoleNames.SystemAdministrator)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
+            $"data-role=\"{Regex.Escape(role)}\".*?name=\"roleToken\" value=\"([^\"]+)\"",
             RegexOptions.Singleline).Groups[1].Value;
         using HttpResponseMessage response = await client.PostAsync(
             "/demo-login",

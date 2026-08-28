@@ -1,26 +1,52 @@
 @model IReadOnlyList<FieldOps.Features.Dashboard.BranchProgressItem>
 @{
-    ViewData["Title"] = "National branch comparison";
+    ViewData["Title"] = "支店状況";
 }
 
-<h1>National branch comparison</h1>
-<p class="text-muted">All measures use the same UTC definitions shown on the dashboard.</p>
+<h1>支店状況</h1>
+<p class="page-intro">支店ごとの遅延件数を先に確認し、必要な支店の詳細へ進めます。</p>
 
 @if (Model.Count == 0)
 {
-    <p class="alert alert-info" role="status">No branches are available.</p>
+    <p class="app-empty-state" role="status">表示できる支店がありません。</p>
 }
 else
 {
-    <div class="table-responsive">
+    <div class="branch-progress-cards">
+    @foreach (var branch in Model)
+    {
+        <section class="task-card card" data-branch-id="@branch.BranchId" data-open-opportunities="@branch.Metrics.OpenOpportunities">
+            <div class="card-body">
+                <h2 class="h5"><a asp-action="Details" asp-route-id="@branch.BranchId">@branch.BranchName</a></h2>
+                <p class="display-6 mb-1">@branch.Metrics.OverdueWork</p>
+                <p class="fw-semibold">遅延件数</p>
+                <dl class="row mb-0">
+                    <dt class="col-7">未対応の営業案件</dt><dd class="col-5">@branch.Metrics.OpenOpportunities</dd>
+                    <dt class="col-7">提案期限</dt><dd class="col-5">@branch.Metrics.ProposalsDue</dd>
+                    <dt class="col-7">予定あり</dt><dd class="col-5">@branch.Metrics.ScheduledWork</dd>
+                    <dt class="col-7">作業中</dt><dd class="col-5">@branch.Metrics.WorkInProgress</dd>
+                    <dt class="col-7">今月の完了</dt><dd class="col-5">@branch.Metrics.CompletionsThisMonth</dd>
+                </dl>
+            </div>
+        </section>
+    }
+    </div>
+    <div class="responsive-records mt-4">
         <table class="table align-middle">
-            <thead><tr><th scope="col">Branch</th><th scope="col">Open opportunities</th><th scope="col">Proposals due</th><th scope="col">Scheduled work</th><th scope="col">Work in progress</th><th scope="col">Overdue work</th><th scope="col">Completions this month</th></tr></thead>
+            <thead>
+                <tr><th scope="col">支店</th><th scope="col">遅延件数</th><th scope="col">未対応の営業案件</th><th scope="col">提案期限</th><th scope="col">予定あり</th><th scope="col">作業中</th><th scope="col">今月の完了</th></tr>
+            </thead>
             <tbody>
             @foreach (var branch in Model)
             {
                 <tr data-branch-id="@branch.BranchId" data-open-opportunities="@branch.Metrics.OpenOpportunities">
                     <th scope="row"><a asp-action="Details" asp-route-id="@branch.BranchId">@branch.BranchName</a></th>
-                    <td>@branch.Metrics.OpenOpportunities</td><td>@branch.Metrics.ProposalsDue</td><td>@branch.Metrics.ScheduledWork</td><td>@branch.Metrics.WorkInProgress</td><td>@branch.Metrics.OverdueWork</td><td>@branch.Metrics.CompletionsThisMonth</td>
+                    <td>@branch.Metrics.OverdueWork</td>
+                    <td>@branch.Metrics.OpenOpportunities</td>
+                    <td>@branch.Metrics.ProposalsDue</td>
+                    <td>@branch.Metrics.ScheduledWork</td>
+                    <td>@branch.Metrics.WorkInProgress</td>
+                    <td>@branch.Metrics.CompletionsThisMonth</td>
                 </tr>
             }
             </tbody>

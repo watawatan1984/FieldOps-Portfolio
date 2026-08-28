@@ -65,6 +65,11 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
         string html = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("作業履歴", html, StringComparison.Ordinal);
+        Assert.Contains("予定日", html, StringComparison.Ordinal);
+        Assert.Contains("完了日", html, StringComparison.Ordinal);
+        Assert.Contains("条件を追加する", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("UTC", html, StringComparison.Ordinal);
         Assert.Contains("Fictional Sakura Facilities", html);
         Assert.Contains("Fictional Ume Services", html);
         Assert.DoesNotContain("Fictional Foreign Customer", html);
@@ -85,7 +90,7 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
         string html = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("No work history matches these filters.", html);
+        Assert.Contains("条件に合う作業履歴はありません。", html, StringComparison.Ordinal);
         Assert.Empty(GetResultsTableBody(html));
     }
 
@@ -122,7 +127,7 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
         string resultRows = GetResultsTableBody(html);
         Assert.Contains("Fictional Sakura Facilities", resultRows);
         Assert.DoesNotContain("Fictional Ume Services", resultRows);
-        Assert.Contains("1 result(s)", html);
+        Assert.Contains("1件を表示", html, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -182,7 +187,7 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
             using HttpResponseMessage response = await client.GetAsync($"{common}&{conflict}");
             string html = await response.Content.ReadAsStringAsync();
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Contains("No work history matches these filters.", html);
+            Assert.Contains("条件に合う作業履歴はありません。", html, StringComparison.Ordinal);
             Assert.Empty(GetResultsTableBody(html));
         }
     }

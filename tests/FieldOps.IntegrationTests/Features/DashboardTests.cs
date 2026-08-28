@@ -157,19 +157,22 @@ public sealed class DashboardTests(PostgresFixture postgres)
         string comparison = await comparisonResponse.Content.ReadAsStringAsync();
         string decodedComparison = WebUtility.HtmlDecode(comparison);
         Assert.Equal(HttpStatusCode.OK, comparisonResponse.StatusCode);
-        Assert.Contains("National branch comparison", comparison, StringComparison.Ordinal);
+        Assert.Contains("支店状況", decodedComparison, StringComparison.Ordinal);
         Assert.Contains("中央サービス支店", decodedComparison, StringComparison.Ordinal);
         Assert.Contains("現場サービス支店", decodedComparison, StringComparison.Ordinal);
+        Assert.True(
+            decodedComparison.IndexOf("遅延件数", StringComparison.Ordinal) <
+            decodedComparison.IndexOf("未対応の営業案件", StringComparison.Ordinal));
         Assert.Contains($"data-branch-id=\"{seed.CentralBranchId}\" data-open-opportunities=\"4\"", comparison, StringComparison.Ordinal);
         Assert.Contains($"data-branch-id=\"{seed.FieldBranchId}\" data-open-opportunities=\"1\"", comparison, StringComparison.Ordinal);
-        Assert.Contains("Scheduled work", comparison, StringComparison.Ordinal);
-        Assert.Contains("Work in progress", comparison, StringComparison.Ordinal);
-        Assert.Contains("Overdue work", comparison, StringComparison.Ordinal);
-        Assert.Contains("Completions this month", comparison, StringComparison.Ordinal);
+        Assert.Contains("予定あり", decodedComparison, StringComparison.Ordinal);
+        Assert.Contains("作業中", decodedComparison, StringComparison.Ordinal);
+        Assert.Contains("遅延件数", decodedComparison, StringComparison.Ordinal);
+        Assert.Contains("今月の完了", decodedComparison, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, (await administrator.GetAsync($"/branches/{seed.FieldBranchId}")).StatusCode);
         string administratorDetails = await administrator.GetStringAsync($"/branches/{seed.CentralBranchId}");
         Assert.Contains("2026年8月12日 21:00", WebUtility.HtmlDecode(administratorDetails), StringComparison.Ordinal);
-        Assert.Contains("Asia/Tokyo", administratorDetails, StringComparison.Ordinal);
+        Assert.DoesNotContain("UTC", administratorDetails, StringComparison.Ordinal);
 
         using HttpClient manager = CreateClient(application);
         await LoginAsAsync(manager, DemoRoleNames.BranchManager);
@@ -215,10 +218,14 @@ public sealed class DashboardTests(PostgresFixture postgres)
         Assert.DoesNotContain("Alpha123", boundedPage, StringComparison.Ordinal);
         Assert.DoesNotContain("secret_value", boundedPage, StringComparison.Ordinal);
         Assert.DoesNotContain("秘密情報", boundedPage, StringComparison.Ordinal);
-        Assert.Contains("Details withheld", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
-        Assert.Contains("OwnerUserId, Status", boundedPage, StringComparison.Ordinal);
+        Assert.Contains("未定義", decodedAuditPages, StringComparison.Ordinal);
+        Assert.DoesNotContain("Details withheld", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
+        Assert.Contains("変更履歴", decodedAuditPages, StringComparison.Ordinal);
+        Assert.Contains("変更した項目", decodedAuditPages, StringComparison.Ordinal);
+        Assert.Contains("営業担当者、状態", decodedAuditPages, StringComparison.Ordinal);
+        Assert.Contains("data-audit-action=\"CentralAuditApprovedFields\"", boundedPage, StringComparison.Ordinal);
         Assert.Contains("2026年8月12日 19:00", WebUtility.HtmlDecode(boundedPage), StringComparison.Ordinal);
-        Assert.Contains("Asia/Tokyo", boundedPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("UTC", boundedPage, StringComparison.Ordinal);
         using HttpResponseMessage extremePage = await administrator.GetAsync(
             "/audit?page=999999999999999999999&pageSize=100");
         Assert.Equal(HttpStatusCode.BadRequest, extremePage.StatusCode);

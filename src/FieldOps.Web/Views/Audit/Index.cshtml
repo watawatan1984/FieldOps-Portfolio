@@ -1,35 +1,52 @@
 @model FieldOps.Features.Administration.AuditPage
 @{
-    ViewData["Title"] = "Audit";
+    ViewData["Title"] = "変更履歴";
     string PageUrl(int page) => Url.Action("Index", "Audit", new { Model.BranchId, page, pageSize = Model.PageSize })!;
 }
 
-<h1>Audit</h1>
-<p class="text-muted">Audit entries show operational field names only. Identity identifiers and payload values are not displayed.</p>
+<h1>変更履歴</h1>
+<p class="page-intro">誰が、いつ、どの業務情報を変更したかを確認できます。個人IDや入力内容の詳細値は表示しません。</p>
 <div data-page-size="@Model.PageSize">
 @if (Model.Items.Count == 0)
 {
-    <p class="alert alert-info" role="status">No audit entries are available in your current scope.</p>
+    <p class="app-empty-state" role="status">現在の範囲に変更履歴はありません。</p>
 }
 else
 {
-    <p>@Model.TotalCount audit entr@(Model.TotalCount == 1 ? "y" : "ies")</p>
-    <div class="table-responsive"><table class="table align-middle"><thead><tr><th scope="col">Occurred (JST, @JapanTimeFormatter.ZoneLabel)</th><th scope="col">Branch</th><th scope="col">Area</th><th scope="col">Action</th><th scope="col">Outcome</th><th scope="col">Changed fields</th><th scope="col">Actor</th></tr></thead><tbody>
-    @foreach (var entry in Model.Items)
-    {
-        <tr data-audit-action="@entry.Action"><td>@JapanTimeFormatter.FormatUtc(entry.OccurredAtUtc)</td><td>@entry.BranchName</td><td>@entry.AggregateType</td><td>@entry.Action</td><td>@entry.Outcome</td><td>@entry.ChangedFields</td><td>@entry.ActorDisplayName</td></tr>
-    }
-    </tbody></table></div>
+    <p>@(Model.TotalCount)件の変更履歴</p>
+    <div class="responsive-records">
+        <table class="table align-middle">
+            <thead>
+                <tr><th scope="col">日時</th><th scope="col">支店</th><th scope="col">対象</th><th scope="col">操作</th><th scope="col">結果</th><th scope="col">変更した項目</th><th scope="col">実行者</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var entry in Model.Items)
+            {
+                <tr data-audit-action="@entry.Action">
+                    <td>@JapanTimeFormatter.FormatUtc(entry.OccurredAtUtc)</td>
+                    <td>@entry.BranchName</td>
+                    <td>@UiDisplayText.ForAuditArea(entry.AggregateType)</td>
+                    <td>@UiDisplayText.ForAuditAction(entry.Action)</td>
+                    <td>@UiDisplayText.ForAuditOutcome(entry.Outcome)</td>
+                    <td>@UiDisplayText.ForAuditFields(entry.ChangedFields)</td>
+                    <td>@entry.ActorDisplayName</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
 }
 </div>
 @if (Model.TotalPages > 1)
 {
     int firstPage = Math.Max(1, Model.Page - 2);
     int lastPage = Math.Min(Model.TotalPages, Model.Page + 2);
-    <nav aria-label="Audit pages"><ul class="pagination">
-    @for (int page = firstPage; page <= lastPage; page++)
-    {
-        <li class="page-item @(page == Model.Page ? "active" : null)"><a class="page-link" href="@PageUrl(page)" aria-current="@(page == Model.Page ? "page" : null)">@(page)</a></li>
-    }
-    </ul></nav>
+    <nav aria-label="変更履歴のページ">
+        <ul class="pagination">
+        @for (int page = firstPage; page <= lastPage; page++)
+        {
+            <li class="page-item @(page == Model.Page ? "active" : null)"><a class="page-link" href="@PageUrl(page)" aria-current="@(page == Model.Page ? "page" : null)">@(page)</a></li>
+        }
+        </ul>
+    </nav>
 }

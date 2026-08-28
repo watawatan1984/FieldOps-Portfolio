@@ -46,6 +46,7 @@ if (confirmActionModal && window.bootstrap) {
     }
 
     event.preventDefault();
+    event.stopImmediatePropagation();
     pendingForm = event.target;
     pendingSubmitter = submitter;
 

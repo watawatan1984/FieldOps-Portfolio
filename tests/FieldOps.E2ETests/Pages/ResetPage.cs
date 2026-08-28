@@ -11,6 +11,9 @@ public sealed class ResetPage(IPage page)
         ILocator form = page.Locator("[data-demo-reset-form]");
         ILocator button = page.GetByRole(AriaRole.Button, new() { Name = "初期化を実行", Exact = true });
         await button.ClickAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "デモデータを初期状態に戻しますか" }))
+            .ToBeVisibleAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "実行する", Exact = true }).ClickAsync();
         await Assertions.Expect(button).ToBeDisabledAsync();
         await Assertions.Expect(form).ToHaveAttributeAsync("aria-busy", "true");
         await Assertions.Expect(page.GetByText("初期化しています…", new() { Exact = true })).ToBeVisibleAsync();
