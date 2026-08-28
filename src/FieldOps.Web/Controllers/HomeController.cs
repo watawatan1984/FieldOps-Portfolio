@@ -5,6 +5,7 @@ using FieldOps.Features.Dashboard;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Web.Authorization;
 using FieldOps.Web.Models;
+using FieldOps.Web.Services;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +13,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace FieldOps.Web.Controllers;
 
 [Authorize(Policy = Policies.ViewDashboard)]
-public sealed class HomeController(DashboardQueries dashboardQueries) : Controller
+public sealed class HomeController(
+    DashboardQueries dashboardQueries,
+    DashboardPageModelFactory dashboardPageModelFactory) : Controller
 {
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
@@ -29,7 +32,9 @@ public sealed class HomeController(DashboardQueries dashboardQueries) : Controll
             branchId = claimedBranchId;
         }
 
-        return View(await dashboardQueries.GetAsync(branchId, cancellationToken));
+        DashboardMetrics metrics = await dashboardQueries.GetAsync(branchId, cancellationToken);
+        string role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        return View(dashboardPageModelFactory.Create(metrics, role, branchId));
     }
 
     public IActionResult Privacy()

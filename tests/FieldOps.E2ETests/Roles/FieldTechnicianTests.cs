@@ -15,6 +15,7 @@ public sealed class FieldTechnicianTests(FieldOpsWebFixture fixture)
         async (page, errors) =>
         {
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.FieldTechnician);
+            await new DashboardPage(page).ExpectFirstTodayActionAsync("今日の作業");
             await page.Locator("[data-nav='work-orders']").ClickAsync();
             await new WorkOrderPage(page).AddEventAndCompleteAsync("架空設備サービス 02");
             Assert.Equal(4, await fixture.QueryScalarAsync<int>(

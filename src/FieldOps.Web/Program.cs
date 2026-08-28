@@ -118,6 +118,7 @@ builder.Services.AddSingleton<DemoResetIntentProtector>();
 builder.Services.AddSingleton<DemoResetCompletionProtector>();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 builder.Services.AddScoped<DashboardQueries>();
+builder.Services.AddScoped<DashboardPageModelFactory>();
 builder.Services.AddScoped<BranchProgressQueries>();
 builder.Services.AddScoped<AuditQueries>();
 builder.Services.AddScoped<PartyQueries>();

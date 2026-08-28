@@ -8,7 +8,7 @@ public sealed class DemoLoginPage(IPage page)
     {
         await page.GotoAsync("/demo-login");
         await page.Locator($"form[data-role=\"{role}\"]").GetByRole(AriaRole.Button).ClickAsync();
-        await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Dashboard", Exact = true }))
+        await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "ホーム", Exact = true }))
             .ToBeVisibleAsync();
     }
 }

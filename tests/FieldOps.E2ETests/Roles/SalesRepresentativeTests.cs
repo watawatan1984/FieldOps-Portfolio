@@ -15,6 +15,7 @@ public sealed class SalesRepresentativeTests(FieldOpsWebFixture fixture)
         async (page, errors) =>
         {
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.SalesRepresentative);
+            await new DashboardPage(page).ExpectFirstTodayActionAsync("期限が近い提案");
             await page.Locator("[data-nav='customers']").ClickAsync();
             await page.GetByLabel("Search name, contact, or site", new() { Exact = true }).FillAsync("架空設備サービス 01");
             await page.GetByRole(AriaRole.Button, new() { Name = "Search", Exact = true }).ClickAsync();

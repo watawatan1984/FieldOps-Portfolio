@@ -1,23 +1,72 @@
-@model FieldOps.Features.Dashboard.DashboardMetrics
+@model DashboardPageViewModel
 @{
-    ViewData["Title"] = "Dashboard";
+    ViewData["Title"] = "ホーム";
 }
 
 <header class="mb-4">
-    <h1>Dashboard</h1>
-    <p class="text-muted mb-0">Operational position as of @JapanTimeFormatter.FormatUtc(Model.AsOfUtc) (@JapanTimeFormatter.ZoneLabel).</p>
+    <h1>ホーム</h1>
+    <p class="page-intro mb-0">@(Model.RoleLabel)として、最初に確認する仕事を上から順に並べています。集計時刻: @JapanTimeFormatter.FormatUtc(Model.Metrics.AsOfUtc) (@JapanTimeFormatter.ZoneLabel)。</p>
 </header>
 
-<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 g-3" aria-label="Dashboard metrics">
-    <div class="col"><section class="card h-100" data-metric="open-opportunities" data-value="@Model.OpenOpportunities"><div class="card-body"><h2 class="h6">Open opportunities</h2><p class="display-6 mb-1">@Model.OpenOpportunities</p><p class="small text-muted mb-0">All opportunities not won or lost, including on hold.</p></div></section></div>
-    <div class="col"><section class="card h-100" data-metric="proposals-due" data-value="@Model.ProposalsDue"><div class="card-body"><h2 class="h6">Proposals due</h2><p class="display-6 mb-1">@Model.ProposalsDue</p><p class="small text-muted mb-0">Proposed opportunities with an expected close date on or before the current UTC date.</p></div></section></div>
-    <div class="col"><section class="card h-100" data-metric="scheduled-work" data-value="@Model.ScheduledWork"><div class="card-body"><h2 class="h6">Scheduled work</h2><p class="display-6 mb-1">@Model.ScheduledWork</p><p class="small text-muted mb-0">Work orders currently in Scheduled status.</p></div></section></div>
-    <div class="col"><section class="card h-100" data-metric="work-in-progress" data-value="@Model.WorkInProgress"><div class="card-body"><h2 class="h6">Work in progress</h2><p class="display-6 mb-1">@Model.WorkInProgress</p><p class="small text-muted mb-0">Work orders currently in In Progress status.</p></div></section></div>
-    <div class="col"><section class="card h-100" data-metric="overdue-work" data-value="@Model.OverdueWork"><div class="card-body"><h2 class="h6">Overdue work</h2><p class="display-6 mb-1">@Model.OverdueWork</p><p class="small text-muted mb-0">Scheduled or in-progress work whose scheduled UTC start is before now.</p></div></section></div>
-    <div class="col"><section class="card h-100" data-metric="completions-this-month" data-value="@Model.CompletionsThisMonth"><div class="card-body"><h2 class="h6">Completions this month</h2><p class="display-6 mb-1">@Model.CompletionsThisMonth</p><p class="small text-muted mb-0">Work with a completion event in the current UTC calendar month.</p></div></section></div>
-</div>
+<section class="mb-4" aria-labelledby="today-heading">
+    <h2 id="today-heading" class="h3">今日やること</h2>
+    <div class="row row-cols-1 row-cols-lg-3 g-3">
+        @foreach (DashboardActionCard action in Model.Today)
+        {
+            <div class="col">
+                <article class="card task-card h-100" data-action-card="@action.Key">
+                    <div class="card-body d-flex flex-column gap-2">
+                        <h3 class="h5 mb-0">@action.Title</h3>
+                        <p class="mb-0">@action.Description</p>
+                        <p class="mb-0"><span class="fs-3 fw-semibold">@action.Count</span> 件</p>
+                        @if (action.Count == 0)
+                        {
+                            <p class="app-empty-state mb-0" role="status">該当なし。今は追加対応はいりません。</p>
+                        }
+                        <a class="btn @(action.RequiresAttention ? "btn-primary" : "btn-outline-primary") mt-auto" href="@action.TargetPath">@(action.RequiresAttention ? "確認する" : "一覧を見る")</a>
+                    </div>
+                </article>
+            </div>
+        }
+    </div>
+</section>
 
-@if (Model.IsEmpty)
+<section class="mb-4" aria-labelledby="review-heading">
+    <h2 id="review-heading" class="h3">確認が必要</h2>
+    <div class="row row-cols-1 row-cols-lg-2 g-3">
+        @foreach (DashboardActionCard action in Model.Review)
+        {
+            <div class="col">
+                <article class="card task-card h-100" data-action-card="@action.Key">
+                    <div class="card-body d-flex flex-column gap-2">
+                        <h3 class="h5 mb-0">@action.Title</h3>
+                        <p class="mb-0">@action.Description</p>
+                        <p class="mb-0"><span class="fs-3 fw-semibold">@action.Count</span> 件</p>
+                        @if (action.Count == 0)
+                        {
+                            <p class="app-empty-state mb-0" role="status">該当なし。今は追加対応はいりません。</p>
+                        }
+                        <a class="btn @(action.RequiresAttention ? "btn-primary" : "btn-outline-primary") mt-auto" href="@action.TargetPath">@(action.RequiresAttention ? "確認する" : "一覧を見る")</a>
+                    </div>
+                </article>
+            </div>
+        }
+    </div>
+</section>
+
+<details class="details-disclosure">
+    <summary>詳しい集計を見る</summary>
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 g-3 mt-2" aria-label="業務集計">
+        <div class="col"><section class="card h-100" data-metric="open-opportunities" data-value="@Model.Metrics.OpenOpportunities"><div class="card-body"><h2 class="h6">未完了の営業案件</h2><p class="display-6 mb-1">@Model.Metrics.OpenOpportunities</p><p class="small text-muted mb-0">受注または失注になっていない営業案件です。</p></div></section></div>
+        <div class="col"><section class="card h-100" data-metric="proposals-due" data-value="@Model.Metrics.ProposalsDue"><div class="card-body"><h2 class="h6">期限が近い提案</h2><p class="display-6 mb-1">@Model.Metrics.ProposalsDue</p><p class="small text-muted mb-0">提案済みで期限を迎えている営業案件です。</p></div></section></div>
+        <div class="col"><section class="card h-100" data-metric="scheduled-work" data-value="@Model.Metrics.ScheduledWork"><div class="card-body"><h2 class="h6">予定ありの作業</h2><p class="display-6 mb-1">@Model.Metrics.ScheduledWork</p><p class="small text-muted mb-0">日程が決まっている作業予定です。</p></div></section></div>
+        <div class="col"><section class="card h-100" data-metric="work-in-progress" data-value="@Model.Metrics.WorkInProgress"><div class="card-body"><h2 class="h6">作業中</h2><p class="display-6 mb-1">@Model.Metrics.WorkInProgress</p><p class="small text-muted mb-0">現場対応が始まっている作業です。</p></div></section></div>
+        <div class="col"><section class="card h-100" data-metric="overdue-work" data-value="@Model.Metrics.OverdueWork"><div class="card-body"><h2 class="h6">期限を過ぎた作業</h2><p class="display-6 mb-1">@Model.Metrics.OverdueWork</p><p class="small text-muted mb-0">予定時刻を過ぎている未完了の作業です。</p></div></section></div>
+        <div class="col"><section class="card h-100" data-metric="completions-this-month" data-value="@Model.Metrics.CompletionsThisMonth"><div class="card-body"><h2 class="h6">今月の完了</h2><p class="display-6 mb-1">@Model.Metrics.CompletionsThisMonth</p><p class="small text-muted mb-0">今月完了した作業です。</p></div></section></div>
+    </div>
+</details>
+
+@if (Model.Metrics.IsEmpty)
 {
-    <p class="alert alert-info mt-4" role="status">No dashboard activity is available in your current scope.</p>
+    <p class="app-empty-state mt-4" role="status">この範囲では、今すぐ対応が必要な項目はありません。</p>
 }

@@ -22,10 +22,12 @@ public sealed class BranchManagerTests(FieldOpsWebFixture fixture)
             await fixture.QueryScalarAsync<int>(
                 "UPDATE \"AspNetUsers\" SET \"BranchId\" = '00000000-0000-4000-8000-000000000001' WHERE \"Id\" = '60000000-0000-4000-8000-000000000004' RETURNING 1");
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.BranchManager);
+            DashboardPage dashboard = new(page);
+            await dashboard.ExpectFirstTodayActionAsync("期限を過ぎた作業");
             await Assertions.Expect(page.Locator("[data-user-branch='中央サービス支店']")).ToBeVisibleAsync();
             Assert.Equal(
                 branchOpenOpportunities.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                await new DashboardPage(page).Metric("open-opportunities").GetAttributeAsync("data-value"));
+                await dashboard.Metric("open-opportunities").GetAttributeAsync("data-value"));
             string dashboardHtml = await page.ContentAsync();
             Assert.DoesNotContain("現場サービス支店", dashboardHtml, StringComparison.Ordinal);
             Assert.DoesNotContain("北部サービス支店", dashboardHtml, StringComparison.Ordinal);

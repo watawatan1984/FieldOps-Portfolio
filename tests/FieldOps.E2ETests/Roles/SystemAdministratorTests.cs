@@ -16,6 +16,7 @@ public sealed class SystemAdministratorTests(FieldOpsWebFixture fixture)
         {
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.SystemAdministrator);
             DashboardPage dashboard = new(page);
+            await dashboard.ExpectFirstTodayActionAsync("全体の遅延");
             string openOpportunities = await dashboard.Metric("open-opportunities").GetAttributeAsync("data-value") ?? string.Empty;
             await page.Locator("[data-nav='customers']").ClickAsync();
             await new PartyPage(page).EditAsync("架空設備サービス 01", "架空設備サービス 01 E2E");

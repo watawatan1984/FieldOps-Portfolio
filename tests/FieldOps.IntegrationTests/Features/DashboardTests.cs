@@ -4,8 +4,11 @@ using System.Text.RegularExpressions;
 
 using FieldOps.Domain.Entities;
 using FieldOps.Domain.Enums;
+using FieldOps.Features.Dashboard;
 using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
+using FieldOps.Web.Models;
+using FieldOps.Web.Services;
 using FieldOps.IntegrationTests.Infrastructure;
 
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -22,6 +25,19 @@ namespace FieldOps.IntegrationTests.Features;
 public sealed class DashboardTests(PostgresFixture postgres)
 {
     private static readonly DateTime FixedUtcNow = new(2026, 8, 12, 12, 0, 0, DateTimeKind.Utc);
+    private static readonly Guid KnownBranchId = Guid.Parse("00000000-0000-4000-8000-000000000001");
+
+    [Theory]
+    [InlineData(DemoRoleNames.BranchManager, "期限を過ぎた作業")]
+    [InlineData(DemoRoleNames.SalesRepresentative, "期限が近い提案")]
+    [InlineData(DemoRoleNames.FieldTechnician, "今日の作業")]
+    public void FactoryPutsTheRoleSpecificActionFirst(string role, string expectedTitle)
+    {
+        DashboardMetrics metrics = new(5, 2, 3, 1, 4, 6, new DateTime(2026, 8, 28, 0, 0, 0, DateTimeKind.Utc));
+        DashboardPageViewModel model = new DashboardPageModelFactory().Create(metrics, role, KnownBranchId);
+
+        Assert.Equal(expectedTitle, model.Today.First().Title);
+    }
 
     [Fact]
     public async Task SystemAdministratorDashboardUsesExplicitUtcMetricBoundaries()
@@ -44,6 +60,37 @@ public sealed class DashboardTests(PostgresFixture postgres)
         AssertMetric(html, "completions-this-month", 2);
         Assert.Contains("2026年8月12日 21:00", WebUtility.HtmlDecode(html), StringComparison.Ordinal);
         Assert.Contains("Asia/Tokyo", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DashboardHomeShowsRoleSpecificTodayActionsAndKeepsBranchScope()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString);
+        await SeedMetricDefinitionsAsync(application);
+        (string Role, string FirstAction, string RecommendedAction, string HiddenBranch)[] cases =
+        [
+            (DemoRoleNames.SystemAdministrator, "全体の遅延", "遅れている作業を確認する", "北部サービス支店"),
+            (DemoRoleNames.BranchManager, "期限を過ぎた作業", "担当者と日程を確認する", "現場サービス支店"),
+            (DemoRoleNames.SalesRepresentative, "期限が近い提案", "営業案件を確認する", "現場サービス支店"),
+            (DemoRoleNames.FieldTechnician, "今日の作業", "作業予定を確認する", "中央サービス支店")
+        ];
+
+        foreach ((string role, string firstAction, string recommendedAction, string hiddenBranch) in cases)
+        {
+            using HttpClient client = CreateClient(application);
+            await LoginAsAsync(client, role);
+
+            string html = await client.GetStringAsync("/");
+            string decodedHtml = WebUtility.HtmlDecode(html);
+
+            Assert.Contains("今日やること", decodedHtml, StringComparison.Ordinal);
+            Assert.Contains(firstAction, decodedHtml, StringComparison.Ordinal);
+            Assert.Contains(recommendedAction, decodedHtml, StringComparison.Ordinal);
+            Assert.Contains("確認が必要", decodedHtml, StringComparison.Ordinal);
+            Assert.Contains("詳しい集計を見る", decodedHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain(hiddenBranch, decodedHtml, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -93,7 +140,8 @@ public sealed class DashboardTests(PostgresFixture postgres)
         string html = await client.GetStringAsync("/");
 
         Assert.Equal(6, Regex.Matches(html, "data-value=\"0\"").Count);
-        Assert.Contains("role=\"status\">No dashboard activity is available in your current scope.</p>", html, StringComparison.Ordinal);
+        Assert.Contains("role=\"status\">該当なし。今は追加対応はいりません。</p>", html, StringComparison.Ordinal);
+        Assert.Contains("role=\"status\">この範囲では、今すぐ対応が必要な項目はありません。</p>", html, StringComparison.Ordinal);
     }
 
     [Fact]
