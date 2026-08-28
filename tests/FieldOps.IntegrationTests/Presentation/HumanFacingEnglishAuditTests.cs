@@ -35,6 +35,64 @@ public sealed class HumanFacingEnglishAuditTests
             "Task10 human-facing English audit found reachable fallback text: " + string.Join("; ", failures));
     }
 
+    [Fact]
+    public void ReachableBadRequestAndValidationAttributesDoNotUseDefaultEnglishMessages()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string[] controllerPaths =
+        [
+            "src/FieldOps.Web/Controllers/PartiesController.cs",
+            "src/FieldOps.Web/Controllers/CustomersController.cs",
+            "src/FieldOps.Web/Controllers/BusinessPartnersController.cs",
+            "src/FieldOps.Web/Controllers/SalesController.cs",
+            "src/FieldOps.Web/Controllers/WorkHistoryController.cs",
+            "src/FieldOps.Web/Controllers/AuditController.cs"
+        ];
+        string[] dtoPaths =
+        [
+            "src/FieldOps.Features/Parties/PartyDtos.cs",
+            "src/FieldOps.Features/Sales/SalesDtos.cs",
+            "src/FieldOps.Features/Work/WorkOrderDtos.cs",
+            "src/FieldOps.Web/Models/WorkHistorySearchViewModel.cs"
+        ];
+        List<string> failures = [];
+
+        foreach (string relativePath in controllerPaths)
+        {
+            string content = File.ReadAllText(Path.Combine(repositoryRoot, relativePath));
+            if (content.Contains("BadRequest(ModelState)", StringComparison.Ordinal))
+            {
+                failures.Add($"{relativePath}: BadRequest(ModelState)");
+            }
+            if (content.Contains("BadRequest(exception.Message)", StringComparison.Ordinal))
+            {
+                failures.Add($"{relativePath}: BadRequest(exception.Message)");
+            }
+        }
+
+        foreach (string relativePath in dtoPaths)
+        {
+            string content = File.ReadAllText(Path.Combine(repositoryRoot, relativePath));
+            string[] lines = content.Split('\n');
+            for (int index = 0; index < lines.Length; index++)
+            {
+                string line = lines[index].Trim();
+                if ((line.StartsWith("[Required", StringComparison.Ordinal) ||
+                     line.StartsWith("[StringLength", StringComparison.Ordinal) ||
+                     line.StartsWith("[Range", StringComparison.Ordinal) ||
+                     line.StartsWith("[EnumDataType", StringComparison.Ordinal)) &&
+                    !line.Contains("ErrorMessage", StringComparison.Ordinal))
+                {
+                    failures.Add($"{relativePath}:{index + 1}: {line}");
+                }
+            }
+        }
+
+        Assert.True(
+            failures.Count == 0,
+            "Reachable BadRequest or validation defaults can expose English text: " + string.Join("; ", failures));
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

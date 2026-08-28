@@ -9,9 +9,16 @@ public sealed class PartySearchRequest
     public Guid BranchId { get; init; }
 
     [StringLength(100, ErrorMessage = "検索キーワードは100文字以内で入力してください")]
+    [Display(Name = "検索キーワード")]
     public string? Search { get; init; }
     public PartyRoleType? Role { get; init; }
+
+    [Range(1, int.MaxValue, ErrorMessage = "ページ番号は1以上で入力してください")]
+    [Display(Name = "ページ番号")]
     public int Page { get; init; } = 1;
+
+    [Range(1, int.MaxValue, ErrorMessage = "表示件数は1以上で入力してください")]
+    [Display(Name = "表示件数")]
     public int PageSize { get; init; } = PartyQueries.DefaultPageSize;
 }
 

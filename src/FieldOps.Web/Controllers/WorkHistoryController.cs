@@ -23,7 +23,7 @@ public sealed class WorkHistoryController(
     {
         if (!ModelState.IsValid)
         {
-            return BadRequest(ModelState);
+            return BadRequest(InputErrorMessage);
         }
 
         bool canSelectBranch = User.IsInRole(DemoRoleNames.SystemAdministrator);
@@ -84,7 +84,12 @@ public sealed class WorkHistoryController(
         }
         catch (ArgumentOutOfRangeException exception)
         {
-            return BadRequest(exception.Message);
+            _ = exception;
+            return BadRequest(PageErrorMessage);
         }
     }
+
+    private const string InputErrorMessage = "入力内容が正しくありません。";
+
+    private const string PageErrorMessage = "ページ番号が正しくありません。";
 }

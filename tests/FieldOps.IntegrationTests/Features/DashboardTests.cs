@@ -33,7 +33,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
     [InlineData(DemoRoleNames.FieldTechnician, "今日の作業")]
     public void FactoryPutsTheRoleSpecificActionFirst(string role, string expectedTitle)
     {
-        DashboardMetrics metrics = new(5, 2, 3, 1, 4, 6, new DateTime(2026, 8, 28, 0, 0, 0, DateTimeKind.Utc));
+        DashboardMetrics metrics = new(5, 2, 3, 1, 1, 1, 4, 1, 6, new DateTime(2026, 8, 28, 0, 0, 0, DateTimeKind.Utc));
         DashboardPageViewModel model = new DashboardPageModelFactory().Create(metrics, role, KnownBranchId);
 
         Assert.Equal(expectedTitle, model.Today.First().Title);
@@ -91,6 +91,39 @@ public sealed class DashboardTests(PostgresFixture postgres)
             Assert.Contains("詳しい集計を見る", decodedHtml, StringComparison.Ordinal);
             Assert.DoesNotContain(hiddenBranch, decodedHtml, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public async Task RoleActionCardsUseCountsAndLinksThatMatchTheirFilteredWorkOrderLists()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString);
+        await SeedMetricDefinitionsAsync(application);
+
+        using HttpClient manager = CreateClient(application);
+        await LoginAsAsync(manager, DemoRoleNames.BranchManager);
+        string managerDashboard = WebUtility.HtmlDecode(await manager.GetStringAsync("/"));
+        DashboardCard managerUnassigned = ExtractCard(managerDashboard, "unassigned-scheduled-work");
+        Assert.Equal("未割当の作業", managerUnassigned.Title);
+        Assert.Equal(1, managerUnassigned.Count);
+        Assert.Contains("status=Scheduled", managerUnassigned.Href, StringComparison.Ordinal);
+        Assert.Contains("unassigned=true", managerUnassigned.Href, StringComparison.Ordinal);
+        Assert.Contains("全1件", WebUtility.HtmlDecode(await manager.GetStringAsync(managerUnassigned.Href)), StringComparison.Ordinal);
+
+        using HttpClient technician = CreateClient(application);
+        await LoginAsAsync(technician, DemoRoleNames.FieldTechnician);
+        string technicianDashboard = WebUtility.HtmlDecode(await technician.GetStringAsync("/"));
+        DashboardCard today = ExtractCard(technicianDashboard, "today-scheduled-work");
+        DashboardCard missingRecords = ExtractCard(technicianDashboard, "missing-completion-records");
+        Assert.Equal("今日の作業", today.Title);
+        Assert.Equal(1, today.Count);
+        Assert.Contains("today=true", today.Href, StringComparison.Ordinal);
+        Assert.Contains("全1件", WebUtility.HtmlDecode(await technician.GetStringAsync(today.Href)), StringComparison.Ordinal);
+        Assert.Equal("未完了記録", missingRecords.Title);
+        Assert.Equal(1, missingRecords.Count);
+        Assert.Contains("status=InProgress", missingRecords.Href, StringComparison.Ordinal);
+        Assert.Contains("missingCompletionRecords=true", missingRecords.Href, StringComparison.Ordinal);
+        Assert.Contains("全1件", WebUtility.HtmlDecode(await technician.GetStringAsync(missingRecords.Href)), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -679,6 +712,19 @@ public sealed class DashboardTests(PostgresFixture postgres)
             .Select(match => match.Groups[1].Value)
             .ToArray();
 
+    private static DashboardCard ExtractCard(string html, string key)
+    {
+        Match match = Regex.Match(
+            html,
+            $"<article[^>]*data-action-card=\"{Regex.Escape(key)}\"[\\s\\S]*?<h3[^>]*>(?<title>.*?)</h3>[\\s\\S]*?<span class=\"fs-3 fw-semibold\">(?<count>\\d+)</span>[\\s\\S]*?<a[^>]*href=\"(?<href>[^\"]+)\"",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, $"Dashboard card was not found: {key}");
+        return new DashboardCard(
+            match.Groups["title"].Value,
+            int.Parse(match.Groups["count"].Value, System.Globalization.CultureInfo.InvariantCulture),
+            WebUtility.HtmlDecode(match.Groups["href"].Value));
+    }
+
     private static async Task<string> GetFollowingSingleRedirectAsync(HttpClient client, string path)
     {
         using HttpResponseMessage response = await client.GetAsync(path);
@@ -795,6 +841,8 @@ public sealed class DashboardTests(PostgresFixture postgres)
     private sealed record AuditSeed(string ManagerUserId);
 
     private sealed record DatabaseSessionCounts(int Active, int IdleInTransaction, int Total);
+
+    private sealed record DashboardCard(string Title, int Count, string Href);
 
     private sealed class DashboardCommandCounter : DbCommandInterceptor
     {

@@ -12,6 +12,7 @@ public sealed class BranchProgressQueries(
     DashboardQueries dashboardQueries)
 {
     private const string SystemAdministratorRole = "System Administrator";
+    private static readonly TimeZoneInfo JapanTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
 
     public async Task<IReadOnlyList<BranchProgressItem>> GetNationalAsync(
         CancellationToken cancellationToken = default)
@@ -23,6 +24,9 @@ public sealed class BranchProgressQueries(
 
         DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
         DateTime utcToday = utcNow.Date;
+        DateOnly todayInJapan = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, JapanTimeZone));
+        DateTime japanTodayStartUtc = ToUtcStartOfJapanDay(todayInJapan);
+        DateTime japanTomorrowStartUtc = ToUtcStartOfJapanDay(todayInJapan.AddDays(1));
         DateTime utcMonthStart = new(utcNow.Year, utcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime utcNextMonthStart = utcMonthStart.AddMonths(1);
 
@@ -47,11 +51,22 @@ public sealed class BranchProgressQueries(
             {
                 BranchId = group.Key,
                 ScheduledWork = group.Count(workOrder => workOrder.Status == WorkOrderStatus.Scheduled),
+                TodayScheduledWork = group.Count(workOrder =>
+                    workOrder.Status == WorkOrderStatus.Scheduled &&
+                    workOrder.ScheduledStartUtc.HasValue &&
+                    workOrder.ScheduledStartUtc.Value >= japanTodayStartUtc &&
+                    workOrder.ScheduledStartUtc.Value < japanTomorrowStartUtc),
+                UnassignedScheduledWork = group.Count(workOrder =>
+                    workOrder.Status == WorkOrderStatus.Scheduled &&
+                    workOrder.AssignedUserId == null),
                 WorkInProgress = group.Count(workOrder => workOrder.Status == WorkOrderStatus.InProgress),
                 OverdueWork = group.Count(workOrder =>
                     (workOrder.Status == WorkOrderStatus.Scheduled || workOrder.Status == WorkOrderStatus.InProgress) &&
                     workOrder.ScheduledStartUtc.HasValue &&
                     workOrder.ScheduledStartUtc.Value < utcNow),
+                MissingCompletionRecords = group.Count(workOrder =>
+                    workOrder.Status == WorkOrderStatus.InProgress &&
+                    !workOrder.Events.Any(workEvent => workEvent.EventType == WorkEventType.Completion)),
                 CompletionsThisMonth = group.Count(workOrder =>
                     workOrder.Status == WorkOrderStatus.Completed &&
                     workOrder.Events.Any(workEvent =>
@@ -78,8 +93,11 @@ public sealed class BranchProgressQueries(
                     sales?.OpenOpportunities ?? 0,
                     sales?.ProposalsDue ?? 0,
                     work?.ScheduledWork ?? 0,
+                    work?.TodayScheduledWork ?? 0,
+                    work?.UnassignedScheduledWork ?? 0,
                     work?.WorkInProgress ?? 0,
                     work?.OverdueWork ?? 0,
+                    work?.MissingCompletionRecords ?? 0,
                     work?.CompletionsThisMonth ?? 0,
                     utcNow));
         }).ToArray();
@@ -100,6 +118,12 @@ public sealed class BranchProgressQueries(
 
         DashboardMetrics metrics = await dashboardQueries.GetAsync(branchId, cancellationToken);
         return new BranchProgressItem(branchId, branchName, metrics);
+    }
+
+    private static DateTime ToUtcStartOfJapanDay(DateOnly japanDate)
+    {
+        DateTime unspecifiedJapanMidnight = japanDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return TimeZoneInfo.ConvertTimeToUtc(unspecifiedJapanMidnight, JapanTimeZone);
     }
 }
 

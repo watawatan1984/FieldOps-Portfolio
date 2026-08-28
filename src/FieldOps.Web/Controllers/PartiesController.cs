@@ -24,7 +24,7 @@ public sealed class PartiesController(
     {
         if (!ModelState.IsValid)
         {
-            return BadRequest(ModelState);
+            return BadRequest(InputErrorMessage);
         }
 
         if (request.BranchId == Guid.Empty)
@@ -56,7 +56,8 @@ public sealed class PartiesController(
         }
         catch (PartyPageOutOfRangeException exception)
         {
-            return BadRequest(exception.Message);
+            _ = exception;
+            return BadRequest(PageErrorMessage);
         }
     }
 
@@ -168,7 +169,7 @@ public sealed class PartiesController(
     {
         if (id != input.Id)
         {
-            return BadRequest();
+            return BadRequest(InputErrorMessage);
         }
 
         IActionResult? denied = await AuthorizePartyAsync(id, input.BranchId, cancellationToken);
@@ -336,6 +337,10 @@ public sealed class PartiesController(
         ModelState.AddModelError(key, message);
         ViewData["PartyError"] = message;
     }
+
+    private const string InputErrorMessage = "入力内容が正しくありません。";
+
+    private const string PageErrorMessage = "ページ番号が正しくありません。";
 
     private async Task<IActionResult> EditWithShareOutcomeAsync(
         Guid partyId,

@@ -24,7 +24,7 @@ public sealed class AuditController(
     {
         if (!ModelState.IsValid)
         {
-            return BadRequest();
+            return BadRequest("入力内容が正しくありません。");
         }
 
         Guid? effectiveBranchId = branchId;
@@ -71,7 +71,8 @@ public sealed class AuditController(
         }
         catch (ArgumentOutOfRangeException exception)
         {
-            return BadRequest(exception.Message);
+            _ = exception;
+            return BadRequest("ページ番号が正しくありません。");
         }
     }
 }

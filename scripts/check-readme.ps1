@@ -28,7 +28,7 @@ $requiredPatterns = [ordered]@{
     "reset safety" = "## デモ初期化の安全性"
     "test matrix" = "## テストと検証結果"
     "current verification date" = "2026-08-29、Windows / \.NET 10 / PostgreSQL 17 / Chromiumでローカル検証を再実行しました"
-    "current test counts" = "Domain tests\s*\|\s*62/62[\s\S]*Integration tests\s*\|\s*209/209[\s\S]*Playwright E2E\s*\|\s*27/27[\s\S]*Full solution\s*\|\s*298/298"
+    "current test counts" = "Domain tests\s*\|\s*62/62[\s\S]*Integration tests\s*\|\s*212/212[\s\S]*Playwright E2E\s*\|\s*27/27[\s\S]*Full solution\s*\|\s*301/301"
     "load evidence" = "docs/evidence/load-test-results\.md"
     "free-host limitation" = "コールドスタート|scale-to-zero"
     "Japanese summary" = "## 日本語概要"
@@ -80,5 +80,5 @@ else {
 
 Write-Output "README content checks passed ($($requiredPatterns.Count) requirements)."
 if ($screenshotFiles.Count -eq 0) {
-    Write-Output "Task 17 screenshot capture remains pending and is not reported as complete."
+    Write-Output "Screenshot capture remains pending and is not reported as complete."
 }

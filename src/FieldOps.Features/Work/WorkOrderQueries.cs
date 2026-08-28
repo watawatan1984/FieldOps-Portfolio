@@ -14,6 +14,7 @@ public sealed class WorkOrderQueries(
 {
     private const string FieldTechnicianRole = "Field Technician";
     private const string SystemAdministratorRole = "System Administrator";
+    private static readonly TimeZoneInfo JapanTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
     public const int DefaultPageSize = 25;
     public const int MaximumPageSize = 100;
 
@@ -43,6 +44,26 @@ public sealed class WorkOrderQueries(
             workOrders = workOrders.Where(workOrder =>
                 (workOrder.Status == WorkOrderStatus.Scheduled || workOrder.Status == WorkOrderStatus.InProgress) &&
                 workOrder.ScheduledStartUtc < utcNow);
+        }
+        if (request.Today)
+        {
+            (DateTime todayStartUtc, DateTime tomorrowStartUtc) = GetTodayJapanUtcBounds();
+            workOrders = workOrders.Where(workOrder =>
+                workOrder.Status == WorkOrderStatus.Scheduled &&
+                workOrder.ScheduledStartUtc >= todayStartUtc &&
+                workOrder.ScheduledStartUtc < tomorrowStartUtc);
+        }
+        if (request.Unassigned)
+        {
+            workOrders = workOrders.Where(workOrder =>
+                workOrder.Status == WorkOrderStatus.Scheduled &&
+                workOrder.AssignedUserId == null);
+        }
+        if (request.MissingCompletionRecords)
+        {
+            workOrders = workOrders.Where(workOrder =>
+                workOrder.Status == WorkOrderStatus.InProgress &&
+                !workOrder.Events.Any(workEvent => workEvent.EventType == WorkEventType.Completion));
         }
 
         int totalCount = await workOrders.CountAsync(cancellationToken);
@@ -159,6 +180,20 @@ public sealed class WorkOrderQueries(
         dbContext.WorkOrders.AsNoTracking().Where(workOrder => workOrder.Id == id)
             .Select(workOrder => (WorkOrderStatus?)workOrder.Status)
             .SingleOrDefaultAsync(cancellationToken);
+
+    private (DateTime StartUtc, DateTime NextStartUtc) GetTodayJapanUtcBounds()
+    {
+        DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
+        DateOnly todayInJapan = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, JapanTimeZone));
+        DateTime startUtc = ToUtcStartOfJapanDay(todayInJapan);
+        return (startUtc, ToUtcStartOfJapanDay(todayInJapan.AddDays(1)));
+    }
+
+    private static DateTime ToUtcStartOfJapanDay(DateOnly japanDate)
+    {
+        DateTime unspecifiedJapanMidnight = japanDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return TimeZoneInfo.ConvertTimeToUtc(unspecifiedJapanMidnight, JapanTimeZone);
+    }
 
     public async Task<WorkOrderEditorOptions> GetEditorOptionsAsync(
         Guid id,

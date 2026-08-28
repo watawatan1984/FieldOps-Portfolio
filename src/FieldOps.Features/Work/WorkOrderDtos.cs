@@ -8,9 +8,21 @@ namespace FieldOps.Features.Work;
 public sealed class WorkOrderSearchRequest
 {
     public Guid BranchId { get; init; }
+
+    [EnumDataType(typeof(WorkOrderStatus), ErrorMessage = "状態の指定が正しくありません。")]
+    [Display(Name = "状態")]
     public WorkOrderStatus? Status { get; init; }
     public bool Overdue { get; init; }
+    public bool Today { get; init; }
+    public bool Unassigned { get; init; }
+    public bool MissingCompletionRecords { get; init; }
+
+    [Range(1, int.MaxValue, ErrorMessage = "ページ番号は1以上で入力してください。")]
+    [Display(Name = "ページ番号")]
     public int Page { get; init; } = 1;
+
+    [Range(1, int.MaxValue, ErrorMessage = "表示件数は1以上で入力してください。")]
+    [Display(Name = "表示件数")]
     public int PageSize { get; init; } = WorkOrderQueries.DefaultPageSize;
 }
 
@@ -43,11 +55,11 @@ public sealed class WorkOrderEditInput
     public uint Version { get; set; }
     public WorkOrderStatus Status { get; set; }
 
-    [Required]
+    [Required(ErrorMessage = "担当者を選んでください。")]
     [Display(Name = "担当者")]
     public string AssignedUserId { get; set; } = string.Empty;
 
-    [Required]
+    [Required(ErrorMessage = "作業開始日時を入力してください。")]
     [Display(Name = "作業開始日時")]
     [DisplayFormat(DataFormatString = "{0:yyyy-MM-ddTHH:mm:ssZ}", ApplyFormatInEditMode = true)]
     public DateTime? ScheduledStartUtc { get; set; }
@@ -84,7 +96,8 @@ public sealed class WorkOrderTransitionInput
 {
     public uint Version { get; set; }
 
-    [EnumDataType(typeof(WorkOrderStatus))]
+    [EnumDataType(typeof(WorkOrderStatus), ErrorMessage = "状態の指定が正しくありません。")]
+    [Display(Name = "変更後の状態")]
     public WorkOrderStatus NextStatus { get; set; }
 }
 
@@ -92,14 +105,17 @@ public sealed class WorkEventInput
 {
     public uint Version { get; set; }
 
-    [EnumDataType(typeof(WorkEventType))]
+    [EnumDataType(typeof(WorkEventType), ErrorMessage = "記録種別の指定が正しくありません。")]
+    [Display(Name = "記録種別")]
     public WorkEventType EventType { get; set; }
 
-    [Required]
-    [StringLength(2000)]
+    [Required(ErrorMessage = "記録内容を入力してください。")]
+    [StringLength(2000, ErrorMessage = "記録内容は2000文字以内で入力してください。")]
+    [Display(Name = "記録内容")]
     public string Summary { get; set; } = string.Empty;
 
-    [Required]
+    [Required(ErrorMessage = "記録日時を入力してください。")]
+    [Display(Name = "記録日時")]
     [DisplayFormat(DataFormatString = "{0:yyyy-MM-ddTHH:mm:ssZ}", ApplyFormatInEditMode = true)]
     public DateTime? OccurredAtUtc { get; set; }
 }

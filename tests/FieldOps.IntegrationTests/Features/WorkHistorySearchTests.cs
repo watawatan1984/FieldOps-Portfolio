@@ -113,10 +113,10 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
             $"workStatus={WorkOrderStatus.Completed}",
             $"eventType={WorkEventType.Arrival}",
             $"technicianId={Uri.EscapeDataString(seed.TechnicianId)}",
-            "scheduledFrom=2026-08-20",
-            "scheduledTo=2026-08-20",
-            "completedFrom=2026-08-31",
-            "completedTo=2026-08-31",
+            "scheduledFrom=2026-08-21",
+            "scheduledTo=2026-08-21",
+            "completedFrom=2026-09-01",
+            "completedTo=2026-09-01",
             $"keyword={Uri.EscapeDataString("　設備　点検　")}"
         });
 
@@ -128,6 +128,29 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
         Assert.Contains("Fictional Sakura Facilities", resultRows);
         Assert.DoesNotContain("Fictional Ume Services", resultRows);
         Assert.Contains("1件を表示", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ScheduledDateFiltersUseJapanCalendarDayBoundaries()
+    {
+        await using TestDatabaseLease database = await CreateDatabaseLeaseAsync();
+        string connectionString = database.ConnectionString;
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = CreateClient(application);
+        SearchSeed seed = await SeedAsync(application);
+        await AddScheduledBoundaryWorkAsync(application, seed.BranchId);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/work-history?branchId={seed.BranchId}&keyword=境界&scheduledFrom=2026-08-28&scheduledTo=2026-08-28");
+        string html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        string resultRows = GetResultsTableBody(html);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("境界 開始ちょうど", resultRows, StringComparison.Ordinal);
+        Assert.Contains("境界 終了直前", resultRows, StringComparison.Ordinal);
+        Assert.DoesNotContain("境界 開始直前", resultRows, StringComparison.Ordinal);
+        Assert.DoesNotContain("境界 翌日開始", resultRows, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -178,8 +201,8 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
             $"workStatus={WorkOrderStatus.Planned}",
             $"eventType={WorkEventType.Correction}",
             $"technicianId={Uri.EscapeDataString("tampered-technician-id")}",
-            "scheduledFrom=2026-08-21&scheduledTo=2026-08-21",
-            "completedFrom=2026-09-01&completedTo=2026-09-01"
+            "scheduledFrom=2026-08-22&scheduledTo=2026-08-22",
+            "completedFrom=2026-09-02&completedTo=2026-09-02"
         ];
 
         foreach (string conflict in conflicts)
@@ -568,6 +591,32 @@ public sealed class WorkHistorySearchTests(PostgresFixture postgres)
                 $"Fictional Paging Customer {index:D3}",
                 $"Paging Site {index:D3}");
         }
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task AddScheduledBoundaryWorkAsync(
+        FieldOpsWebApplicationFactory application,
+        Guid branchId)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Branch branch = await dbContext.Branches.SingleAsync(item => item.Id == branchId);
+        (_, _, WorkOrder before) = AddWorkOrder(dbContext, branch, "境界 開始直前", "境界 Site A");
+        before.Schedule(
+            new DateTime(2026, 8, 27, 14, 59, 59, DateTimeKind.Utc),
+            new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc));
+        (_, _, WorkOrder start) = AddWorkOrder(dbContext, branch, "境界 開始ちょうど", "境界 Site B");
+        start.Schedule(
+            new DateTime(2026, 8, 27, 15, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc));
+        (_, _, WorkOrder end) = AddWorkOrder(dbContext, branch, "境界 終了直前", "境界 Site C");
+        end.Schedule(
+            new DateTime(2026, 8, 28, 14, 59, 59, DateTimeKind.Utc),
+            new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc));
+        (_, _, WorkOrder next) = AddWorkOrder(dbContext, branch, "境界 翌日開始", "境界 Site D");
+        next.Schedule(
+            new DateTime(2026, 8, 28, 15, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc));
         await dbContext.SaveChangesAsync();
     }
 

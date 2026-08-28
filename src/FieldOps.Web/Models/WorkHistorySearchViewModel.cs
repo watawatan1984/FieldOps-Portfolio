@@ -15,21 +15,32 @@ public sealed class WorkHistorySearchViewModel : IValidatableObject
     public WorkOrderStatus? WorkStatus { get; set; }
     public WorkEventType? EventType { get; set; }
 
-    [StringLength(450)]
+    [StringLength(450, ErrorMessage = "担当者は450文字以内で指定してください。")]
+    [Display(Name = "担当者")]
     public string? TechnicianId { get; set; }
 
+    [Display(Name = "予定日（開始）")]
     public DateOnly? ScheduledFrom { get; set; }
+
+    [Display(Name = "予定日（終了）")]
     public DateOnly? ScheduledTo { get; set; }
+
+    [Display(Name = "完了日（開始）")]
     public DateOnly? CompletedFrom { get; set; }
+
+    [Display(Name = "完了日（終了）")]
     public DateOnly? CompletedTo { get; set; }
 
-    [StringLength(100)]
+    [StringLength(100, ErrorMessage = "キーワードは100文字以内で入力してください。")]
+    [Display(Name = "キーワード")]
     public string? Keyword { get; set; }
 
-    [Range(1, int.MaxValue)]
+    [Range(1, int.MaxValue, ErrorMessage = "ページ番号は1以上で入力してください。")]
+    [Display(Name = "ページ番号")]
     public int Page { get; set; } = 1;
 
-    [Range(1, int.MaxValue)]
+    [Range(1, int.MaxValue, ErrorMessage = "表示件数は1以上で入力してください。")]
+    [Display(Name = "表示件数")]
     public int PageSize { get; set; } = WorkHistorySearch.DefaultPageSize;
 
     public int EffectivePageSize { get; private set; } = WorkHistorySearch.DefaultPageSize;

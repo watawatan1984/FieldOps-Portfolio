@@ -133,9 +133,9 @@ dotnet run --project src/FieldOps.Web --launch-profile http
 | 種別              |    結果 | 主な範囲                                                |
 | ----------------- | ------: | ------------------------------------------------------- |
 | Domain tests      |   62/62 | 不変条件、状態遷移、終端規則                            |
-| Integration tests | 209/209 | 実PostgreSQL、認可、同時実行、障害、安全な初期化        |
+| Integration tests | 212/212 | 実PostgreSQL、認可、同時実行、障害、安全な初期化        |
 | Playwright E2E    |   27/27 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤      |
-| Full solution     | 298/298 | Release構成、失敗・スキップ0                            |
+| Full solution     | 301/301 | Release構成、失敗・スキップ0                            |
 | Baseline load     |    PASS | 20 VUs / 10分、11,843 requests、p95 31.90 ms、HTTP失敗0 |
 | Stress load       |    PASS | 100 VUs / 5分、29,548 requests、p95 39.63 ms、HTTP失敗0 |
 

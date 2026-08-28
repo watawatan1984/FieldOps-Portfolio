@@ -29,7 +29,17 @@ public sealed class WorkOrdersController(
                 out Guid claimedBranchId)
                     ? claimedBranchId
                     : await queries.GetDefaultBranchIdAsync(cancellationToken);
-            return RedirectToAction(nameof(Index), new { branchId, request.Page, request.PageSize });
+            return RedirectToAction(nameof(Index), new
+            {
+                branchId,
+                request.Status,
+                request.Overdue,
+                request.Today,
+                request.Unassigned,
+                request.MissingCompletionRecords,
+                request.Page,
+                request.PageSize
+            });
         }
         if (request.BranchId != Guid.Empty)
         {
@@ -168,7 +178,7 @@ public sealed class WorkOrdersController(
     {
         IActionResult? denied = await AuthorizeWorkOrderAsync(id, BranchResourceAction.UpdateWorkOrders, cancellationToken);
         if (denied is not null) return denied;
-        if (!ModelState.IsValid) return BadRequest(ModelState);
+        if (!ModelState.IsValid) return BadRequest("入力内容が正しくありません。");
         try
         {
             await commands.TransitionAsync(id, input, cancellationToken);

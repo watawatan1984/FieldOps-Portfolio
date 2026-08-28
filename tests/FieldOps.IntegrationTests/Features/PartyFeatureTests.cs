@@ -218,7 +218,7 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         string body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("page is outside the supported range", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ページ番号が正しくありません。", body, StringComparison.Ordinal);
     }
 
     [Fact]

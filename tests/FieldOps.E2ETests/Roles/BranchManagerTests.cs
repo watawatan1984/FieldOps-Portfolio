@@ -24,6 +24,8 @@ public sealed class BranchManagerTests(FieldOpsWebFixture fixture)
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.BranchManager);
             DashboardPage dashboard = new(page);
             await dashboard.ExpectFirstTodayActionAsync("期限を過ぎた作業");
+            await dashboard.ExpectWorkOrderCardMatchesListAsync("unassigned-scheduled-work", "未割当の作業", "unassigned=true");
+            await page.GotoAsync("/");
             await Assertions.Expect(page.Locator("[data-user-branch='中央サービス支店']")).ToBeVisibleAsync();
             Assert.Equal(
                 branchOpenOpportunities.ToString(System.Globalization.CultureInfo.InvariantCulture),

@@ -119,7 +119,7 @@ else
         @for (int pageNumber = 1; pageNumber <= Model.TotalPages; pageNumber++)
         {
             <li class="page-item @(pageNumber == Model.Page ? "active" : null)">
-                <a class="page-link" href="@Url.Action("Index", new { branchId = Model.Filters.BranchId, status = Model.Filters.Status, overdue = Model.Filters.Overdue ? true : (bool?)null, page = pageNumber, pageSize = Model.PageSize })">@pageNumber</a>
+                <a class="page-link" href="@Url.Action("Index", new { branchId = Model.Filters.BranchId, status = Model.Filters.Status, overdue = Model.Filters.Overdue ? true : (bool?)null, today = Model.Filters.Today ? true : (bool?)null, unassigned = Model.Filters.Unassigned ? true : (bool?)null, missingCompletionRecords = Model.Filters.MissingCompletionRecords ? true : (bool?)null, page = pageNumber, pageSize = Model.PageSize })">@pageNumber</a>
             </li>
         }
     </ul>

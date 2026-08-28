@@ -65,7 +65,8 @@ public sealed class CustomersController(
         }
         catch (PartyPageOutOfRangeException exception)
         {
-            return BadRequest(exception.Message);
+            _ = exception;
+            return BadRequest("ページ番号が正しくありません。");
         }
     }
 }

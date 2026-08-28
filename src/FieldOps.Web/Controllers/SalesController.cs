@@ -24,7 +24,7 @@ public sealed class SalesController(
     {
         if (!ModelState.IsValid)
         {
-            return BadRequest(ModelState);
+            return BadRequest(InputErrorMessage);
         }
 
         if (request.BranchId == Guid.Empty && !User.IsInRole(DemoRoleNames.SystemAdministrator))
@@ -58,7 +58,8 @@ public sealed class SalesController(
         }
         catch (SalesPageOutOfRangeException exception)
         {
-            return BadRequest(exception.Message);
+            _ = exception;
+            return BadRequest(PageErrorMessage);
         }
     }
 
@@ -135,14 +136,14 @@ public sealed class SalesController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Edit(Guid id, SalesEditInput input, CancellationToken cancellationToken)
     {
-        if (id != input.Id) return BadRequest();
+        if (id != input.Id) return BadRequest(InputErrorMessage);
         IActionResult? denied = await AuthorizeOpportunityAsync(id, BranchResourceAction.ManageSales, cancellationToken);
         if (denied is not null) return denied;
         SalesEditInput? loaded = await queries.GetEditAsync(id, cancellationToken);
         if (loaded is null) return NotFound();
         if (input.BranchId != loaded.BranchId || input.PartyId != loaded.PartyId || input.SiteId != loaded.SiteId)
         {
-            return BadRequest();
+            return BadRequest(InputErrorMessage);
         }
         ValidateProposalPair(input);
         await PopulateEditorAsync(loaded.BranchId, false, cancellationToken);
@@ -186,7 +187,7 @@ public sealed class SalesController(
     {
         IActionResult? denied = await AuthorizeOpportunityAsync(id, BranchResourceAction.ManageSales, cancellationToken);
         if (denied is not null) return denied;
-        if (!ModelState.IsValid) return BadRequest(ModelState);
+        if (!ModelState.IsValid) return BadRequest(InputErrorMessage);
         try
         {
             await commands.TransitionAsync(id, input, cancellationToken);
@@ -290,4 +291,8 @@ public sealed class SalesController(
         Response.StatusCode = statusCode;
         return View("Details", details);
     }
+
+    private const string InputErrorMessage = "入力内容が正しくありません。";
+
+    private const string PageErrorMessage = "ページ番号が正しくありません。";
 }

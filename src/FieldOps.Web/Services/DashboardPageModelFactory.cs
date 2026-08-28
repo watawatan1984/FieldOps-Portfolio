@@ -13,7 +13,10 @@ public sealed class DashboardPageModelFactory
         string salesPath = ScopedPath("/sales", branchId);
         string overdueWorkPath = WorkPath(branchId, overdue: true);
         string scheduledWorkPath = WorkPath(branchId, WorkOrderStatus.Scheduled);
+        string todayWorkPath = WorkPath(branchId, today: true);
+        string unassignedWorkPath = WorkPath(branchId, WorkOrderStatus.Scheduled, unassigned: true);
         string inProgressWorkPath = WorkPath(branchId, WorkOrderStatus.InProgress);
+        string missingCompletionRecordsPath = WorkPath(branchId, WorkOrderStatus.InProgress, missingCompletionRecords: true);
         string completedWorkPath = WorkPath(branchId, WorkOrderStatus.Completed);
         string branchesPath = branchId.HasValue ? $"/branches/{branchId.Value}" : "/branches";
 
@@ -36,7 +39,7 @@ public sealed class DashboardPageModelFactory
                 UiDisplayText.ForRole(role),
                 [
                     Card("overdue-work", "期限を過ぎた作業", "担当者と日程を確認する。", metrics.OverdueWork, overdueWorkPath),
-                    Card("scheduled-work", "未割当と予定確認", "予定済みの作業に担当者漏れがないか確認します。", metrics.ScheduledWork, scheduledWorkPath),
+                    Card("unassigned-scheduled-work", "未割当の作業", "予定済みの作業に担当者漏れがないか確認します。", metrics.UnassignedScheduledWork, unassignedWorkPath),
                     Card("proposals-due", "期限が近い提案", "支店内の提案期限を確認します。", metrics.ProposalsDue, salesPath)
                 ],
                 [
@@ -59,9 +62,9 @@ public sealed class DashboardPageModelFactory
                 metrics,
                 UiDisplayText.ForRole(role),
                 [
-                    Card("scheduled-work", "今日の作業", "作業予定を確認する。", metrics.ScheduledWork, scheduledWorkPath),
+                    Card("today-scheduled-work", "今日の作業", "作業予定を確認する。", metrics.TodayScheduledWork, todayWorkPath),
                     Card("work-in-progress", "次の訪問", "作業中の予定と次の訪問先を確認します。", metrics.WorkInProgress, inProgressWorkPath),
-                    Card("completions-this-month", "未完了記録", "記録漏れがないか作業履歴を確認します。", metrics.CompletionsThisMonth, "/work-history", false)
+                    Card("missing-completion-records", "未完了記録", "記録漏れがないか作業予定を確認します。", metrics.MissingCompletionRecords, missingCompletionRecordsPath)
                 ],
                 [
                     Card("overdue-work", "期限を過ぎた作業", "遅れている担当作業を確認します。", metrics.OverdueWork, overdueWorkPath),
@@ -83,12 +86,21 @@ public sealed class DashboardPageModelFactory
     private static string ScopedPath(string path, Guid? branchId) =>
         branchId.HasValue ? $"{path}?branchId={branchId.Value}" : path;
 
-    private static string WorkPath(Guid? branchId, WorkOrderStatus? status = null, bool overdue = false)
+    private static string WorkPath(
+        Guid? branchId,
+        WorkOrderStatus? status = null,
+        bool overdue = false,
+        bool today = false,
+        bool unassigned = false,
+        bool missingCompletionRecords = false)
     {
         List<string> query = [];
         if (branchId.HasValue) query.Add($"branchId={branchId.Value}");
         if (status.HasValue) query.Add($"status={status.Value}");
         if (overdue) query.Add("overdue=true");
+        if (today) query.Add("today=true");
+        if (unassigned) query.Add("unassigned=true");
+        if (missingCompletionRecords) query.Add("missingCompletionRecords=true");
         return query.Count == 0 ? "/work-orders" : $"/work-orders?{string.Join("&", query)}";
     }
 }

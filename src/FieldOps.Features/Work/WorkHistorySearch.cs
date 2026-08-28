@@ -17,6 +17,7 @@ public sealed class WorkHistorySearch(
 {
     private const string FieldTechnicianRole = "Field Technician";
     private const string SystemAdministratorRole = "System Administrator";
+    private static readonly TimeZoneInfo JapanTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
     public const int DefaultPageSize = 25;
     public const int MaximumPageSize = 100;
 
@@ -77,31 +78,24 @@ public sealed class WorkHistorySearch(
         }
         if (criteria.ScheduledFrom.HasValue)
         {
-            DateTime scheduledFromUtc = criteria.ScheduledFrom.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            DateTime scheduledFromUtc = ToUtcStartOfJapanDay(criteria.ScheduledFrom.Value);
             query = query.Where(workOrder => workOrder.ScheduledStartUtc >= scheduledFromUtc);
         }
         if (criteria.ScheduledTo.HasValue)
         {
-            if (criteria.ScheduledTo.Value == DateOnly.MaxValue)
-            {
-                DateTime scheduledToUtc = criteria.ScheduledTo.Value.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
-                query = query.Where(workOrder => workOrder.ScheduledStartUtc <= scheduledToUtc);
-            }
-            else
-            {
-                DateTime scheduledBeforeUtc = criteria.ScheduledTo.Value.AddDays(1)
-                    .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-                query = query.Where(workOrder => workOrder.ScheduledStartUtc < scheduledBeforeUtc);
-            }
+            DateTime scheduledBeforeUtc = ToUtcStartOfNextJapanDay(criteria.ScheduledTo.Value);
+            query = query.Where(workOrder => workOrder.ScheduledStartUtc < scheduledBeforeUtc);
         }
         if (criteria.CompletedFrom.HasValue || criteria.CompletedTo.HasValue)
         {
-            DateTime? completedFromUtc = criteria.CompletedFrom?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            DateTime? completedFromUtc = criteria.CompletedFrom.HasValue
+                ? ToUtcStartOfJapanDay(criteria.CompletedFrom.Value)
+                : null;
             DateTime? completedBeforeUtc = criteria.CompletedTo is { } completedTo && completedTo != DateOnly.MaxValue
-                ? completedTo.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)
+                ? ToUtcStartOfNextJapanDay(completedTo)
                 : null;
             DateTime? completedThroughUtc = criteria.CompletedTo == DateOnly.MaxValue
-                ? DateOnly.MaxValue.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+                ? DateTime.MaxValue
                 : null;
             query = query.Where(workOrder => workOrder.Events.Any(workEvent =>
                 workEvent.EventType == WorkEventType.Completion &&
@@ -241,6 +235,17 @@ public sealed class WorkHistorySearch(
         value.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("%", "\\%", StringComparison.Ordinal)
             .Replace("_", "\\_", StringComparison.Ordinal);
+
+    private static DateTime ToUtcStartOfJapanDay(DateOnly japanDate)
+    {
+        DateTime unspecifiedJapanMidnight = japanDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return TimeZoneInfo.ConvertTimeToUtc(unspecifiedJapanMidnight, JapanTimeZone);
+    }
+
+    private static DateTime ToUtcStartOfNextJapanDay(DateOnly japanDate) =>
+        japanDate == DateOnly.MaxValue
+            ? DateTime.MaxValue
+            : ToUtcStartOfJapanDay(japanDate.AddDays(1));
 }
 
 public sealed record WorkHistorySearchCriteria(

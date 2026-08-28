@@ -8,16 +8,39 @@ namespace FieldOps.Features.Sales;
 public sealed class SalesSearchRequest
 {
     public Guid BranchId { get; init; }
+
+    [StringLength(450, ErrorMessage = "営業担当者は450文字以内で指定してください。")]
+    [Display(Name = "営業担当者")]
     public string? OwnerUserId { get; init; }
+
+    [EnumDataType(typeof(SalesOpportunityStatus), ErrorMessage = "状態の指定が正しくありません。")]
+    [Display(Name = "状態")]
     public SalesOpportunityStatus? Status { get; init; }
+
+    [Display(Name = "予定日（開始）")]
     public DateTime? ExpectedCloseFrom { get; init; }
+
+    [Display(Name = "予定日（終了）")]
     public DateTime? ExpectedCloseTo { get; init; }
+
+    [Range(typeof(decimal), "0", "9999999999999999.99", ErrorMessage = "提案金額の下限は0円以上で入力してください。")]
+    [Display(Name = "提案金額（下限）")]
     public decimal? MinimumAmount { get; init; }
+
+    [Range(typeof(decimal), "0", "9999999999999999.99", ErrorMessage = "提案金額の上限は0円以上で入力してください。")]
+    [Display(Name = "提案金額（上限）")]
     public decimal? MaximumAmount { get; init; }
 
-    [StringLength(100)]
+    [StringLength(100, ErrorMessage = "検索キーワードは100文字以内で入力してください。")]
+    [Display(Name = "検索キーワード")]
     public string? Search { get; init; }
+
+    [Range(1, int.MaxValue, ErrorMessage = "ページ番号は1以上で入力してください。")]
+    [Display(Name = "ページ番号")]
     public int Page { get; init; } = 1;
+
+    [Range(1, int.MaxValue, ErrorMessage = "表示件数は1以上で入力してください。")]
+    [Display(Name = "表示件数")]
     public int PageSize { get; init; } = SalesQueries.DefaultPageSize;
 }
 
@@ -104,7 +127,8 @@ public sealed class SalesTransitionInput
 {
     public uint Version { get; set; }
 
-    [EnumDataType(typeof(SalesOpportunityStatus))]
+    [EnumDataType(typeof(SalesOpportunityStatus), ErrorMessage = "状態の指定が正しくありません。")]
+    [Display(Name = "変更後の状態")]
     public SalesOpportunityStatus NextStatus { get; set; }
 }
 
