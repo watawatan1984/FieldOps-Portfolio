@@ -725,14 +725,24 @@ public sealed class SalesFeatureTests(PostgresFixture postgres)
 
         using HttpClient administrator = CreateClient(application);
         await LoginAsAsync(administrator, DemoRoleNames.SystemAdministrator);
-        string administratorHtml = await administrator.GetStringAsync("/sales");
+        string administratorHtml = WebUtility.HtmlDecode(await administrator.GetStringAsync("/sales"));
         Assert.Contains($"/sales/{id}", administratorHtml);
-        Assert.Equal(HttpStatusCode.OK, (await administrator.GetAsync($"/sales/{id}")).StatusCode);
+        Assert.Contains("全支店", administratorHtml, StringComparison.Ordinal);
+        Assert.Contains("未割当", administratorHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("All branches", administratorHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Unassigned", administratorHtml, StringComparison.Ordinal);
+        using HttpResponseMessage administratorDetails = await administrator.GetAsync($"/sales/{id}");
+        string administratorDetailsHtml = WebUtility.HtmlDecode(await administratorDetails.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, administratorDetails.StatusCode);
+        Assert.Contains("未割当", administratorDetailsHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Unassigned", administratorDetailsHtml, StringComparison.Ordinal);
 
         using HttpClient manager = CreateClient(application);
         await LoginAsAsync(manager, DemoRoleNames.BranchManager);
-        string managerHtml = await manager.GetStringAsync($"/sales?branchId={seed.CentralBranchId}");
+        string managerHtml = WebUtility.HtmlDecode(await manager.GetStringAsync($"/sales?branchId={seed.CentralBranchId}"));
         Assert.Contains($"/sales/{id}", managerHtml);
+        Assert.Contains("未割当", managerHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Unassigned", managerHtml, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, (await manager.GetAsync($"/sales/{id}")).StatusCode);
 
         using HttpClient sales = CreateClient(application);

@@ -145,6 +145,24 @@ public sealed class DashboardTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task PrivacyPageUsesJapaneseFictionalDataDisclosure()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString);
+        using HttpClient client = CreateClient(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+
+        using HttpResponseMessage response = await client.GetAsync("/Home/Privacy");
+        string html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("プライバシーについて", html, StringComparison.Ordinal);
+        Assert.Contains("このデモは架空データだけを使用", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Privacy Policy", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Use this page", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task NationalBranchComparisonIsAdministratorOnlyAndBranchDetailsEnforceDirectUrlScope()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
@@ -218,7 +236,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         Assert.DoesNotContain("Alpha123", boundedPage, StringComparison.Ordinal);
         Assert.DoesNotContain("secret_value", boundedPage, StringComparison.Ordinal);
         Assert.DoesNotContain("秘密情報", boundedPage, StringComparison.Ordinal);
-        Assert.Contains("未定義", decodedAuditPages, StringComparison.Ordinal);
+        Assert.Contains("詳細は非表示です", decodedAuditPages, StringComparison.Ordinal);
         Assert.DoesNotContain("Details withheld", firstPage + secondPage + boundedPage, StringComparison.Ordinal);
         Assert.Contains("変更履歴", decodedAuditPages, StringComparison.Ordinal);
         Assert.Contains("変更した項目", decodedAuditPages, StringComparison.Ordinal);
@@ -248,13 +266,46 @@ public sealed class DashboardTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task AuditFallbacksUseJapaneseDisplayTextForGlobalRowsMissingUsersAndWithheldDetails()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString);
+        await using (AsyncServiceScope scope = application.Services.CreateAsyncScope())
+        {
+            FieldOpsDbContext db = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+            db.AuditEntries.Add(new AuditEntry(
+                "Party",
+                Guid.NewGuid(),
+                null,
+                "Updated",
+                "Success",
+                "raw-secret-field",
+                new DateTime(2026, 8, 29, 1, 0, 0, DateTimeKind.Utc),
+                "missing-demo-user"));
+            await db.SaveChangesAsync();
+        }
+
+        using HttpClient administrator = CreateClient(application);
+        await LoginAsAsync(administrator, DemoRoleNames.SystemAdministrator);
+
+        string html = WebUtility.HtmlDecode(await administrator.GetStringAsync("/audit?pageSize=100"));
+
+        Assert.Contains("全支店", html, StringComparison.Ordinal);
+        Assert.Contains("未登録の利用者", html, StringComparison.Ordinal);
+        Assert.Contains("詳細は非表示です", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("National", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Former demo user", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Details withheld", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task IntegratedShellRendersAuthorizedNavigationActiveMarkersOffcanvasAndExactHeaderLabels()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using FieldOpsWebApplicationFactory application = CreateApplication(connectionString);
         (string Role, string Name, string Branch, string[] Visible, string[] Hidden, bool CanInitialize)[] cases =
         [
-            (DemoRoleNames.SystemAdministrator, "佐藤 健一", "National", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history", "branches", "audit"], [], true),
+            (DemoRoleNames.SystemAdministrator, "佐藤 健一", "全支店", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history", "branches", "audit"], [], true),
             (DemoRoleNames.BranchManager, "鈴木 美咲", "中央サービス支店", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history", "branches", "audit"], [], false),
             (DemoRoleNames.SalesRepresentative, "高橋 翔太", "中央サービス支店", ["dashboard", "customers", "business-partners", "sales", "work-orders", "work-history"], ["branches", "audit"], false),
             (DemoRoleNames.FieldTechnician, "田中 葵", "現場サービス支店", ["dashboard", "sales", "work-orders", "work-history"], ["customers", "business-partners", "branches", "audit"], false)
@@ -276,6 +327,8 @@ public sealed class DashboardTests(PostgresFixture postgres)
             Assert.Contains($"data-user-name=\"{item.Name}\"", decodedDashboard, StringComparison.Ordinal);
             Assert.Contains($"data-user-role=\"{item.Role}\"", dashboard, StringComparison.Ordinal);
             Assert.Contains($"data-user-branch=\"{item.Branch}\"", decodedDashboard, StringComparison.Ordinal);
+            Assert.Contains("架空のデモデータのみを使用しています", decodedDashboard, StringComparison.Ordinal);
+            Assert.DoesNotContain("Fictional demonstration data only", dashboard, StringComparison.Ordinal);
             Assert.Equal(item.CanInitialize, dashboard.Contains(">初期化</a>", StringComparison.Ordinal));
             if (item.CanInitialize)
             {

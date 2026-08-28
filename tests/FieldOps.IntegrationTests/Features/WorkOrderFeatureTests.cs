@@ -237,6 +237,28 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task WorkOrderAndHistoryPagesUseJapaneseFallbackWhenAssignedTechnicianIsMissingFromRoleDirectory()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = CreateClient(application);
+        WorkSeed seed = await SeedAsync(application);
+        await LoginAsAsync(client, DemoRoleNames.BranchManager);
+        Guid id = await CreateThroughHttpAsync(client, seed.WonOpportunityId);
+        await ScheduleThroughHttpAsync(client, id, seed.CentralTechnicianUserId);
+        await RemoveTechnicianRoleAsync(application, seed.CentralTechnicianUserId);
+
+        string indexHtml = WebUtility.HtmlDecode(await client.GetStringAsync($"/work-orders?branchId={seed.BranchId}"));
+        string detailsHtml = WebUtility.HtmlDecode(await client.GetStringAsync($"/work-orders/{id}"));
+        string historyHtml = WebUtility.HtmlDecode(await client.GetStringAsync($"/work-history?branchId={seed.BranchId}"));
+
+        Assert.Contains("未登録の担当者", indexHtml, StringComparison.Ordinal);
+        Assert.Contains("未登録の担当者", detailsHtml, StringComparison.Ordinal);
+        Assert.Contains("未登録の担当者", historyHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Assigned technician", indexHtml + detailsHtml + historyHtml, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WorkOrderPagesEnforceManagerSalesAndAssignedTechnicianScopes()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
@@ -799,6 +821,19 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
                 ["__RequestVerificationToken"] = token
             }));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+    }
+
+    private static async Task RemoveTechnicianRoleAsync(
+        FieldOpsWebApplicationFactory application,
+        string technicianUserId)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        IdentityRole technicianRole = await dbContext.Roles.SingleAsync(role => role.Name == DemoRoleNames.FieldTechnician);
+        IdentityUserRole<string> userRole = await dbContext.UserRoles.SingleAsync(role =>
+            role.UserId == technicianUserId && role.RoleId == technicianRole.Id);
+        dbContext.UserRoles.Remove(userRole);
+        await dbContext.SaveChangesAsync();
     }
 
     private static async Task TransitionThroughHttpAsync(HttpClient client, Guid id, WorkOrderStatus next)

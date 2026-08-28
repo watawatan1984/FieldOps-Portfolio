@@ -128,14 +128,14 @@ dotnet run --project src/FieldOps.Web --launch-profile http
 
 ## テストと検証結果
 
-2026-08-27、Windows / Linux CI / .NET 10 / PostgreSQL 17 / Chromiumで次を再確認しました。公開前の全CIゲートはソースコミット [`1c3ea75`](https://github.com/watawatan1984/FieldOps-Portfolio/commit/1c3ea75bd9a2df7000d8fa566c791a86a1779edf) で成功しています。負荷試験は隔離されたローカル環境で測定し、公開環境には実行していません。
+2026-08-29、Windows / .NET 10 / PostgreSQL 17 / Chromiumでローカル検証を再実行しました。公開前の過去CIゲートはソースコミット [`1c3ea75`](https://github.com/watawatan1984/FieldOps-Portfolio/commit/1c3ea75bd9a2df7000d8fa566c791a86a1779edf) で成功しています。負荷試験は隔離されたローカル環境で測定した過去証跡で、公開環境には実行していません。
 
 | 種別              |    結果 | 主な範囲                                                |
 | ----------------- | ------: | ------------------------------------------------------- |
 | Domain tests      |   62/62 | 不変条件、状態遷移、終端規則                            |
-| Integration tests | 188/188 | 実PostgreSQL、認可、同時実行、障害、安全な初期化        |
-| Playwright E2E    |   16/16 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤      |
-| Full solution     | 266/266 | Release構成、失敗・スキップ0                            |
+| Integration tests | 209/209 | 実PostgreSQL、認可、同時実行、障害、安全な初期化        |
+| Playwright E2E    |   27/27 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤      |
+| Full solution     | 298/298 | Release構成、失敗・スキップ0                            |
 | Baseline load     |    PASS | 20 VUs / 10分、11,843 requests、p95 31.90 ms、HTTP失敗0 |
 | Stress load       |    PASS | 100 VUs / 5分、29,548 requests、p95 39.63 ms、HTTP失敗0 |
 

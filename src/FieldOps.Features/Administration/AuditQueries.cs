@@ -49,7 +49,7 @@ public sealed class AuditQueries(
                         .Where(branch => branch.Id == entry.BranchId.Value)
                         .Select(branch => branch.Name)
                         .Single()
-                    : "National"
+                    : "全支店"
             })
             .ToArrayAsync(cancellationToken);
 
@@ -63,7 +63,7 @@ public sealed class AuditQueries(
             AuditFieldContract.FormatForDisplay(row.ChangeSummary),
             row.OccurredAtUtc,
             row.BranchName,
-            displayNames.GetValueOrDefault(row.ActorUserId, "Former demo user")))
+            displayNames.GetValueOrDefault(row.ActorUserId, "未登録の利用者")))
             .ToArray();
 
         return new AuditPage(branchId, effectivePage, effectivePageSize, totalCount, items);
@@ -73,7 +73,7 @@ public sealed class AuditQueries(
 
 public static class AuditFieldContract
 {
-    private const string Withheld = "Details withheld";
+    private const string Withheld = "詳細は非表示です";
 
     private static readonly HashSet<string> ApprovedFields = new(StringComparer.Ordinal)
     {

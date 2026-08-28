@@ -57,7 +57,7 @@ public sealed class DemoUserClaimsPrincipalFactory(
         }
         else
         {
-            identity.AddClaim(new Claim(BranchNameClaimType, "National"));
+            identity.AddClaim(new Claim(BranchNameClaimType, "全支店"));
         }
 
         return identity;

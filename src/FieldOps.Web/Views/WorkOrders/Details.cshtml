@@ -103,7 +103,7 @@ else
         <dt class="col-sm-3">内部状態</dt>
         <dd class="col-sm-9">@Model.Status</dd>
         <dt class="col-sm-3">予定日時 UTC</dt>
-        <dd class="col-sm-9">@(Model.ScheduledStartUtc?.ToString("O") ?? "Not scheduled")</dd>
+        <dd class="col-sm-9">@(Model.ScheduledStartUtc?.ToString("O") ?? "予定なし")</dd>
         <dt class="col-sm-3">Version</dt>
         <dd class="col-sm-9">@Model.Version</dd>
     </dl>

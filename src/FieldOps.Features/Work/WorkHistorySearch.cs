@@ -176,7 +176,7 @@ public sealed class WorkHistorySearch(
             row.SiteName,
             row.BranchName,
             row.AssignedUserId,
-            row.AssignedUserId is null ? null : technicianNames.GetValueOrDefault(row.AssignedUserId, "Assigned technician"),
+            row.AssignedUserId is null ? null : technicianNames.GetValueOrDefault(row.AssignedUserId, "未登録の担当者"),
             row.Status,
             row.ScheduledStartUtc,
             row.CompletionDateUtc)).ToArray();

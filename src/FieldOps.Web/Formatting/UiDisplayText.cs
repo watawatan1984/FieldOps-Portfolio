@@ -140,6 +140,7 @@ public static class UiDisplayText
         "Status" => "状態",
         "Summary" => "内容",
         "TargetBranchId" => "対象支店",
+        "詳細は非表示です" => "詳細は非表示です",
         _ => "未定義"
     };
 }

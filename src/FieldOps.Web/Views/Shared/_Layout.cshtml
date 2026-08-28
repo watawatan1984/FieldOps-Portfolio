@@ -21,10 +21,10 @@
         await DemoModeVerifier.IsApprovedAsync(Context.RequestAborted);
     bool canViewBranchProgress = User.IsInRole(DemoRoleNames.SystemAdministrator) || User.IsInRole(DemoRoleNames.BranchManager);
     string controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
-    string userName = User.FindFirstValue(DemoUserClaimsPrincipalFactory.DisplayNameClaimType) ?? "Fictional user";
+    string userName = User.FindFirstValue(DemoUserClaimsPrincipalFactory.DisplayNameClaimType) ?? "未登録の利用者";
     string userRole = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
     string userRoleLabel = UiDisplayText.ForRole(userRole);
-    string userBranch = User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchNameClaimType) ?? "National";
+    string userBranch = User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchNameClaimType) ?? "全支店";
     string? branchId = User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType);
     bool hasResetCompletion = DemoResetCompletionProtector.TryGetCorrelationId(
         Context.Request.Query["resetCompletion"],
@@ -133,7 +133,7 @@
         </main>
     }
     <footer class="border-top text-muted py-3">
-        <div class="container-fluid">&copy; 2026 - FieldOps Portal - Fictional demonstration data only</div>
+        <div class="container-fluid">&copy; 2026 - FieldOps Portal - 架空のデモデータのみを使用しています</div>
     </footer>
     <partial name="_ConfirmActionModal" />
     <script src="~/lib/jquery/dist/jquery.min.js"></script>

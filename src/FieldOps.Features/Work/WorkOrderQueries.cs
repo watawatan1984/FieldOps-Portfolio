@@ -72,7 +72,7 @@ public sealed class WorkOrderQueries(
         Dictionary<string, string> names = technicians.ToDictionary(user => user.Id, user => user.DisplayName);
         WorkOrderListItem[] items = rows.Select(row => new WorkOrderListItem(
             row.Id, row.PartyName, row.SiteName, row.BranchName,
-            row.AssignedUserId is null ? null : names.GetValueOrDefault(row.AssignedUserId, "Assigned technician"),
+            row.AssignedUserId is null ? null : names.GetValueOrDefault(row.AssignedUserId, "未登録の担当者"),
             row.Status, row.ScheduledStartUtc)).ToArray();
         IReadOnlyList<WorkOrderBranchOption> branches = canSelectBranch
             ? await dbContext.Branches.AsNoTracking().OrderBy(branch => branch.Name)
@@ -121,7 +121,7 @@ public sealed class WorkOrderQueries(
             cancellationToken);
         string? assignedName = workOrder.AssignedUserId is null
             ? null
-            : technicians.FirstOrDefault(user => user.Id == workOrder.AssignedUserId)?.DisplayName ?? "Assigned technician";
+            : technicians.FirstOrDefault(user => user.Id == workOrder.AssignedUserId)?.DisplayName ?? "未登録の担当者";
         IReadOnlyList<WorkOrderStatus> allowedTransitions = canUpdate
             ? workOrder.GetAllowedTransitions()
             : [];

@@ -122,13 +122,13 @@ public sealed class SalesQueries(
             row.BranchName,
             row.OwnerUserId is not null && ownerNames.TryGetValue(row.OwnerUserId, out string? ownerName)
                 ? ownerName
-                : row.OwnerUserId ?? "Unassigned",
+                : row.OwnerUserId ?? "未割当",
             row.Status,
             row.ProposedAmount,
             row.ExpectedCloseDate,
             row.Version)).ToList();
         string branchName = request.BranchId == Guid.Empty
-            ? "All branches"
+            ? "全支店"
             : await GetBranchNameAsync(request.BranchId, cancellationToken);
         IReadOnlyList<SalesBranchOption> branches = canSelectBranch
             ? await dbContext.Branches.AsNoTracking()
@@ -214,7 +214,7 @@ public sealed class SalesQueries(
         IReadOnlyList<FieldOpsUserOption> owners = await userDirectory.GetUsersInRoleAsync(opportunity.BranchId, SalesRepresentativeRole, cancellationToken);
         IReadOnlyList<FieldOpsUserOption> technicians = await userDirectory.GetUsersInRoleAsync(opportunity.BranchId, FieldTechnicianRole, cancellationToken);
         string ownerName = owners.FirstOrDefault(owner => owner.Id == opportunity.OwnerUserId)?.DisplayName
-            ?? opportunity.OwnerUserId ?? "Unassigned";
+            ?? opportunity.OwnerUserId ?? "未割当";
         string? assignedName = opportunity.AssignedUserId is null
             ? null
             : technicians.FirstOrDefault(user => user.Id == opportunity.AssignedUserId)?.DisplayName ?? opportunity.AssignedUserId;
