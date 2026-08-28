@@ -27,7 +27,9 @@ public sealed class StatusController : Controller
 
         if (model is null)
         {
-            return BadRequest();
+            return code >= StatusCodes.Status400BadRequest && code <= 599
+                ? StatusCode(code)
+                : BadRequest();
         }
 
         Response.StatusCode = model.StatusCode;

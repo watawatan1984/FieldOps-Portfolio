@@ -123,8 +123,11 @@ public sealed class FailurePathTests(PostgresFixture postgres)
         string forbiddenHtml = await forbidden.Content.ReadAsStringAsync();
         string decodedForbiddenHtml = WebUtility.HtmlDecode(forbiddenHtml);
         using HttpResponseMessage unexpected = await client.GetAsync("/status/500");
+        string unexpectedBody = await unexpected.Content.ReadAsStringAsync();
         using HttpResponseMessage accidentalOk = await client.GetAsync("/status/200");
         using HttpResponseMessage accidentalRedirect = await client.GetAsync("/status/302");
+        using HttpResponseMessage bareServiceUnavailable = await client.GetAsync("/failure-probe/status/503");
+        string bareServiceUnavailableBody = await bareServiceUnavailable.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         Assert.Contains("指定された情報が見つかりません", decodedMissingHtml, StringComparison.Ordinal);
@@ -136,9 +139,12 @@ public sealed class FailurePathTests(PostgresFixture postgres)
         Assert.Contains("前の画面へ戻る", decodedForbiddenHtml, StringComparison.Ordinal);
         Assert.Contains("href=\"/\"", forbiddenHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("href=\"javascript:", forbiddenHtml, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(HttpStatusCode.BadRequest, unexpected.StatusCode);
+        Assert.Equal(HttpStatusCode.InternalServerError, unexpected.StatusCode);
+        Assert.Empty(unexpectedBody);
         Assert.Equal(HttpStatusCode.BadRequest, accidentalOk.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, accidentalRedirect.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, bareServiceUnavailable.StatusCode);
+        Assert.Empty(bareServiceUnavailableBody);
     }
 
     [Fact]
@@ -323,6 +329,13 @@ public sealed class FailureProbeController : ControllerBase
 {
     [HttpGet("timeout")]
     public IActionResult Timeout([FromQuery] string detail) => throw new TimeoutException(detail);
+
+    [HttpGet("status/{code:int}")]
+    public IActionResult BareStatus(int code)
+    {
+        Response.StatusCode = code;
+        return new EmptyResult();
+    }
 
     [HttpGet("database")]
     public async Task<IActionResult> Database(

@@ -85,3 +85,43 @@ Complete
 
 - `git diff --check` 実行時にWindowsのCRLF変換警告は出たが、空白エラーはない。
 - Minorのformat全面調整はTask 10へdeferred。
+
+## Fix round 2
+
+### Status
+
+Complete
+
+### 変更
+
+- `StatusController.Index` は403/404以外でも `400 <= code <= 599` の場合、本文なしで元のstatus codeを維持するようにした。
+- `/status/200` と `/status/302` は安全に `400 Bad Request` で拒否し、成功表示やリダイレクト扱いにならない契約を維持した。
+- Integrationの裸status probeを空本文のstatus応答にし、`UseStatusCodePagesWithReExecute` 後も503が503のまま残る回帰テストを追加した。
+- Fix round 1のCSP-safe戻り導線（`href="/" data-history-back` と外部 `site.js`）は維持した。
+
+### RED / GREEN
+
+- RED: `StatusCodePagesRenderSafeJapaneseRecoveryOnlyForForbiddenAndNotFound` に `/status/500` と裸503のstatus維持期待を追加し、既存実装で `/status/500` が400へ潰れることを確認した（1 failed / 0 passed）。
+- GREEN: `StatusController.Index` の403/404以外の4xx/5xxを元status維持へ変更し、同テストが 1 passed / 0 failed になった。
+
+### 対象テスト
+
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~StatusCodePagesRenderSafeJapaneseRecoveryOnlyForForbiddenAndNotFound" --logger "console;verbosity=minimal"` -> 1 passed, 0 failed
+- `dotnet test tests\FieldOps.IntegrationTests --filter "FullyQualifiedName~WorkHistorySearchTests|FullyQualifiedName~DashboardTests|FullyQualifiedName~FailurePathTests" --logger "console;verbosity=minimal"` -> 43 passed, 0 failed
+- `dotnet build src\FieldOps.Web\FieldOps.Web.csproj -c Release` -> succeeded, 0 warnings, 0 errors
+- `dotnet test tests\FieldOps.E2ETests --filter "FullyQualifiedName~SystemAdministratorTests|FullyQualifiedName~ResetPage" -- Playwright.BrowserName=chromium` -> 1 passed, 0 failed
+
+### 全体テスト
+
+- `dotnet test FieldOps.sln --configuration Release --no-restore --logger "console;verbosity=minimal"` -> Domain 62 passed, E2E 19 passed, Integration 203 passed, 0 failed
+- `git diff --check` -> exit code 0
+
+### 機密漏えい自己レビュー
+
+- 403/404以外の `/status/{code:int}` は日本語Viewを返さず、本文なしのstatusだけを返すため、500系の例外、stack、secret、相関ID以外の診断情報を追加表示しない。
+- 既存HTML 500の安全応答、JSON `{ correlationId }` 契約、CSP-safe戻り導線、監査保存値の英語契約は変更していない。
+
+### 既知懸念
+
+- `git diff --check` 実行時にWindowsのCRLF変換警告は出たが、空白エラーはない。
+- Minorのformat全面調整はTask 10へdeferred。
