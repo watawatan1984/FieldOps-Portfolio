@@ -2,7 +2,19 @@ html {
   font-size: 18px;
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+.btn:focus,
+.btn:active:focus,
+button.btn:focus,
+a.btn:focus,
+.btn-link.nav-link:focus,
+.nav-link:focus,
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus,
+a:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #0b5ed7 !important;
+  outline-offset: 3px !important;
   box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }
 
@@ -131,8 +143,22 @@ body {
 td,
 th,
 .card,
-.page-intro {
+.page-intro,
+.badge,
+.btn,
+.breadcrumb,
+.pagination,
+.app-user-summary,
+.form-control,
+.form-select,
+textarea {
   overflow-wrap: anywhere;
+}
+
+.d-flex,
+.row,
+.pagination {
+  min-width: 0;
 }
 
 @media (min-width: 992px) {
@@ -156,6 +182,24 @@ th,
 
   .app-content {
     padding: 1rem;
+  }
+
+  .btn,
+  .btn-link,
+  .page-link {
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
   }
 }
 

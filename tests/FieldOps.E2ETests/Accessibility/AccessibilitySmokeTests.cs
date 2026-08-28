@@ -49,6 +49,9 @@ public sealed class AccessibilitySmokeTests(FieldOpsWebFixture fixture)
             await Assertions.Expect(navigation).ToBeHiddenAsync();
             await Assertions.Expect(toggle).ToBeFocusedAsync();
             await Assertions.Expect(toggle).ToHaveAttributeAsync("aria-expanded", "false");
+            string outlineStyle = await page.EvaluateAsync<string>(
+                "() => getComputedStyle(document.activeElement).outlineStyle");
+            Assert.NotEqual("none", outlineStyle);
         },
         new ViewportSize { Width = 390, Height = 844 });
 

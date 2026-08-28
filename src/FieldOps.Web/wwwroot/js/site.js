@@ -30,6 +30,7 @@ if (primaryNavigation && primaryNavigationToggle) {
   });
   primaryNavigation.addEventListener('hidden.bs.offcanvas', () => {
     primaryNavigationToggle.setAttribute('aria-expanded', 'false');
+    primaryNavigationToggle.focus();
   });
 }
 

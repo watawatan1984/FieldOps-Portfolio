@@ -153,6 +153,7 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
         string testName,
         Func<IPage, BrowserErrorCollector, Task> test,
         ViewportSize? viewport = null,
+        ReducedMotion? reducedMotion = null,
         bool resetDatabase = true,
         FailureArtifactHooks? failureArtifactHooks = null)
     {
@@ -172,7 +173,8 @@ public sealed class FieldOpsWebFixture : IAsyncLifetime
         {
             BaseURL = BaseUrl,
             IgnoreHTTPSErrors = true,
-            ViewportSize = viewport ?? new ViewportSize { Width = 1440, Height = 900 }
+            ViewportSize = viewport ?? new ViewportSize { Width = 1440, Height = 900 },
+            ReducedMotion = reducedMotion
         });
         context.SetDefaultTimeout(10_000);
         await context.Tracing.StartAsync(new TracingStartOptions
