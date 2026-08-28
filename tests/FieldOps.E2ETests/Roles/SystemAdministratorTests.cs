@@ -17,11 +17,11 @@ public sealed class SystemAdministratorTests(FieldOpsWebFixture fixture)
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.SystemAdministrator);
             DashboardPage dashboard = new(page);
             string openOpportunities = await dashboard.Metric("open-opportunities").GetAttributeAsync("data-value") ?? string.Empty;
-            await page.GetByRole(AriaRole.Link, new() { Name = "Customers", Exact = true }).ClickAsync();
+            await page.Locator("[data-nav='customers']").ClickAsync();
             await new PartyPage(page).EditAsync("架空設備サービス 01", "架空設備サービス 01 E2E");
             Assert.Equal(1, await fixture.QueryScalarAsync<int>(
                 "SELECT count(*) FROM \"AuditEntries\" WHERE \"AggregateId\" = '10000000-0000-4000-8000-000000000001' AND \"Action\" = 'Updated'"));
-            await page.GetByRole(AriaRole.Link, new() { Name = "Audit", Exact = true }).ClickAsync();
+            await page.Locator("[data-nav='audit']").ClickAsync();
             await Assertions.Expect(page.GetByText("Updated", new() { Exact = true }).First).ToBeVisibleAsync();
             await new ResetPage(page).ExecuteOnceAsync();
             Assert.Equal(40, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"Parties\""));

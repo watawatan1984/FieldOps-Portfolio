@@ -21,3 +21,61 @@ if (primaryNavigation && primaryNavigationToggle) {
     primaryNavigationToggle.setAttribute('aria-expanded', 'false');
   });
 }
+
+const confirmActionModal = document.querySelector('[data-confirm-action-modal]');
+if (confirmActionModal && window.bootstrap) {
+  const modal = new bootstrap.Modal(confirmActionModal);
+  const title = confirmActionModal.querySelector('[data-confirm-modal-title]');
+  const target = confirmActionModal.querySelector('[data-confirm-modal-target]');
+  const message = confirmActionModal.querySelector('[data-confirm-modal-message]');
+  const impact = confirmActionModal.querySelector('[data-confirm-modal-impact]');
+  const runButton = confirmActionModal.querySelector('[data-confirm-run]');
+  let pendingForm = null;
+  let pendingSubmitter = null;
+  let confirmedForm = null;
+
+  document.addEventListener('submit', event => {
+    if (confirmedForm === event.target) {
+      confirmedForm = null;
+      return;
+    }
+
+    const submitter = event.submitter;
+    if (!(submitter instanceof HTMLElement) || !submitter.matches('[data-confirm-action]')) {
+      return;
+    }
+
+    event.preventDefault();
+    pendingForm = event.target;
+    pendingSubmitter = submitter;
+
+    title.textContent = submitter.dataset.confirmTitle || '実行しますか';
+    target.textContent = submitter.dataset.confirmTarget || submitter.textContent.trim() || '選択した情報';
+    message.textContent = submitter.dataset.confirmMessage || 'この操作を実行します。';
+    impact.textContent = submitter.dataset.confirmImpact || '実行後、画面の内容が更新されます。';
+    modal.show();
+  }, true);
+
+  runButton?.addEventListener('click', () => {
+    if (!pendingForm) {
+      return;
+    }
+
+    const form = pendingForm;
+    const submitter = pendingSubmitter;
+    confirmedForm = form;
+    pendingForm = null;
+    pendingSubmitter = null;
+    modal.hide();
+    form.requestSubmit(submitter);
+  });
+
+  confirmActionModal.addEventListener('hidden.bs.modal', () => {
+    if (pendingSubmitter) {
+      pendingSubmitter.focus();
+    }
+
+    pendingForm = null;
+    pendingSubmitter = null;
+  });
+}

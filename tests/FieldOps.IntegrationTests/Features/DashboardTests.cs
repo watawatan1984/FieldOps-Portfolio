@@ -215,7 +215,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
             Assert.Contains("class=\"offcanvas-lg offcanvas-start app-sidebar\"", dashboard, StringComparison.Ordinal);
             Assert.Contains("data-bs-toggle=\"offcanvas\"", dashboard, StringComparison.Ordinal);
             Assert.Contains("data-bs-target=\"#primaryNavigation\"", dashboard, StringComparison.Ordinal);
-            Assert.Contains("aria-label=\"Primary navigation\"", dashboard, StringComparison.Ordinal);
+            Assert.Contains("aria-label=\"主なメニュー\"", dashboard, StringComparison.Ordinal);
             Assert.Single(Regex.Matches(dashboard, "aria-current=\"page\"").Cast<Match>());
             Assert.Contains("data-nav=\"dashboard\" aria-current=\"page\"", dashboard, StringComparison.Ordinal);
             Assert.Contains($"data-user-name=\"{item.Name}\"", decodedDashboard, StringComparison.Ordinal);

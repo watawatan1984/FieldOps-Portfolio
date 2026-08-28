@@ -6,7 +6,7 @@ public sealed class SalesPage(IPage page)
 {
     public async Task CreateAndAdvanceAsync()
     {
-        await page.GetByRole(AriaRole.Link, new() { Name = "Sales", Exact = true }).ClickAsync();
+        await page.Locator("[data-nav='sales']").ClickAsync();
         await page.GetByRole(AriaRole.Link, new() { Name = "Create opportunity", Exact = true }).ClickAsync();
         await page.GetByLabel("Party", new() { Exact = true }).SelectOptionAsync("10000000-0000-4000-8000-000000000001");
         await page.GetByLabel("Site", new() { Exact = true }).SelectOptionAsync("12000000-0000-4000-8000-000000000001");

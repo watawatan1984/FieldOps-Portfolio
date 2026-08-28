@@ -1,11 +1,5 @@
 html {
-  font-size: 14px;
-}
-
-@media (min-width: 768px) {
-  html {
-    font-size: 16px;
-  }
+  font-size: 18px;
 }
 
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
@@ -19,7 +13,21 @@ html {
 
 body {
   min-height: 100vh;
-  background: #f6f8fb;
+  line-height: 1.65;
+  color: #1f2937;
+  background: #f5f7fa;
+}
+
+.btn,
+.form-control,
+.form-select {
+  min-height: 3rem;
+}
+
+.nav-link {
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
 }
 
 .app-header {
@@ -54,10 +62,55 @@ body {
 .app-content {
   min-width: 0;
   padding: 1.5rem;
+  width: 100%;
 }
 
 .app-user-summary {
   line-height: 1.15;
+}
+
+.page-intro {
+  max-width: 46rem;
+  color: #4b5563;
+}
+
+.task-card {
+  border: 2px solid transparent;
+  border-radius: .75rem;
+}
+
+.task-card:focus-within {
+  border-color: #0b5ed7;
+}
+
+.responsive-records {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.responsive-records table {
+  min-width: 42rem;
+}
+
+.details-disclosure {
+  border-top: 1px solid var(--bs-border-color);
+  padding-top: 1rem;
+}
+
+.details-disclosure summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+}
+
+.app-empty-state {
+  border: 1px solid var(--bs-border-color);
+  border-left: .35rem solid #0b5ed7;
+  background: #fff;
+  color: #4b5563;
+  padding: 1rem;
 }
 
 @media (min-width: 992px) {

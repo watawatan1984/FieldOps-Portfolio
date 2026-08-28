@@ -1,0 +1,24 @@
+<div class="modal fade" id="confirmActionModal" tabindex="-1" aria-labelledby="confirmActionModalTitle" aria-describedby="confirmActionModalMessage" data-confirm-action-modal>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="confirmActionModalTitle" data-confirm-modal-title>実行しますか</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="確認を閉じる"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="mb-0">
+                    <dt>対象</dt>
+                    <dd data-confirm-modal-target>選択した情報</dd>
+                    <dt>変更内容</dt>
+                    <dd id="confirmActionModalMessage" data-confirm-modal-message>この操作を実行します。</dd>
+                    <dt>影響</dt>
+                    <dd data-confirm-modal-impact>実行後、画面の内容が更新されます。</dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-confirm-cancel>やめる</button>
+                <button type="button" class="btn btn-primary" data-confirm-run>実行する</button>
+            </div>
+        </div>
+    </div>
+</div>

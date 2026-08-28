@@ -4,7 +4,7 @@ for details on configuring this project to bundle and minify static web assets. 
 a.navbar-brand {
   white-space: normal;
   text-align: center;
-  word-break: break-all;
+  word-break: keep-all;
 }
 
 a {
@@ -21,6 +21,11 @@ a {
   color: #fff;
   background-color: #1b6ec2;
   border-color: #1861ac;
+}
+
+.app-sidebar .nav-link {
+  min-height: 3rem;
+  align-items: center;
 }
 
 .border-top {

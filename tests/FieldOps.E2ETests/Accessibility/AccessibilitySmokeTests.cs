@@ -22,7 +22,7 @@ public sealed class AccessibilitySmokeTests(FieldOpsWebFixture fixture)
             await Assertions.Expect(page.GetByRole(AriaRole.Banner)).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Main)).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Contentinfo)).ToBeVisibleAsync();
-            await Assertions.Expect(page.GetByRole(AriaRole.Navigation, new() { Name = "Primary navigation", Exact = true }))
+            await Assertions.Expect(page.GetByRole(AriaRole.Navigation, new() { Name = "主なメニュー", Exact = true }))
                 .ToBeVisibleAsync();
             await Assertions.Expect(page.Locator("#primaryNavigation")).ToBeVisibleAsync();
             await page.Keyboard.PressAsync("Tab");
@@ -37,13 +37,13 @@ public sealed class AccessibilitySmokeTests(FieldOpsWebFixture fixture)
         async (page, _) =>
         {
             await new DemoLoginPage(page).LoginAsAsync(DemoRoleNames.SystemAdministrator);
-            ILocator toggle = page.GetByRole(AriaRole.Button, new() { Name = "Open primary navigation", Exact = true });
+            ILocator toggle = page.GetByRole(AriaRole.Button, new() { Name = "メニューを開く", Exact = true });
             ILocator navigation = page.Locator("#primaryNavigation");
             await Assertions.Expect(navigation).ToBeHiddenAsync();
             await toggle.ClickAsync();
             await Assertions.Expect(navigation).ToBeVisibleAsync();
             await Assertions.Expect(toggle).ToHaveAttributeAsync("aria-expanded", "true");
-            ILocator close = page.GetByRole(AriaRole.Button, new() { Name = "Close navigation", Exact = true });
+            ILocator close = page.GetByRole(AriaRole.Button, new() { Name = "メニューを閉じる", Exact = true });
             await Assertions.Expect(close).ToBeFocusedAsync();
             await close.ClickAsync();
             await Assertions.Expect(navigation).ToBeHiddenAsync();

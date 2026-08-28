@@ -3,6 +3,7 @@
 @using FieldOps.Infrastructure.Identity
 @using FieldOps.Infrastructure.Demo
 @using FieldOps.Web.Authorization
+@using FieldOps.Web.Formatting
 @using FieldOps.Web.Services
 @using Microsoft.AspNetCore.Authorization
 @inject IAuthorizationService AuthorizationService
@@ -22,6 +23,7 @@
     string controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
     string userName = User.FindFirstValue(DemoUserClaimsPrincipalFactory.DisplayNameClaimType) ?? "Fictional user";
     string userRole = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+    string userRoleLabel = UiDisplayText.ForRole(userRole);
     string userBranch = User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchNameClaimType) ?? "National";
     string? branchId = User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType);
     bool hasResetCompletion = DemoResetCompletionProtector.TryGetCorrelationId(
@@ -30,11 +32,11 @@
         out string resetCompletionCorrelationId);
     bool Active(string name) => string.Equals(controller, name, StringComparison.OrdinalIgnoreCase);
 }
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - FieldOps Portal</title>
+    <title>@ViewData["Title"] - FieldOps 業務ポータル</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/FieldOps.Web.styles.css" asp-append-version="true" />
@@ -44,23 +46,23 @@
         <div class="container-fluid d-flex flex-wrap align-items-center gap-3 py-2">
             @if (authenticated)
             {
-                <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#primaryNavigation" aria-controls="primaryNavigation" aria-expanded="false" aria-label="Open primary navigation">
-                    <span aria-hidden="true">☰</span>
+                <button class="btn btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#primaryNavigation" aria-controls="primaryNavigation" aria-expanded="false" aria-label="メニューを開く">
+                    メニュー
                 </button>
             }
-            <a class="navbar-brand fw-semibold me-auto" asp-controller="Home" asp-action="Index">FieldOps Portal</a>
+            <a class="navbar-brand fw-semibold me-auto" asp-controller="Home" asp-action="Index">FieldOps 業務ポータル</a>
             @if (authenticated)
             {
                 <div class="app-user-summary text-end">
                     <span class="d-block fw-semibold" data-user-name="@userName">@userName</span>
-                    <span class="small text-muted"><span data-user-role="@userRole">@userRole</span> · <span data-user-branch="@userBranch">@userBranch</span></span>
+                    <span class="small text-muted"><span data-user-role="@userRole">@userRoleLabel</span> · <span data-user-branch="@userBranch">@userBranch</span></span>
                 </div>
                 @if (canResetDemo)
                 {
                     <span data-policy="@Policies.ResetDemo"><a asp-controller="Administration" asp-action="Reset" class="btn btn-outline-secondary btn-sm">初期化</a></span>
                 }
                 <form method="post" asp-controller="DemoLogin" asp-action="Logout" class="mb-0">
-                    <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
+                    <button type="submit" class="btn btn-outline-danger btn-sm">終了する</button>
                 </form>
             }
         </div>
@@ -70,46 +72,46 @@
         <div class="app-shell">
             <aside class="offcanvas-lg offcanvas-start app-sidebar" tabindex="-1" id="primaryNavigation" aria-labelledby="primaryNavigationLabel">
                 <div class="offcanvas-header border-bottom">
-                    <h2 class="offcanvas-title h5" id="primaryNavigationLabel">Navigation</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#primaryNavigation" aria-label="Close navigation"></button>
+                    <h2 class="offcanvas-title h5" id="primaryNavigationLabel">メニュー</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#primaryNavigation" aria-label="メニューを閉じる"></button>
                 </div>
                 <div class="offcanvas-body p-3">
-                    <nav aria-label="Primary navigation">
+                    <nav aria-label="主なメニュー">
                         <ul class="nav nav-pills flex-column gap-1">
                             @if (canViewDashboard)
                             {
-                                <li class="nav-item" data-policy="@Policies.ViewDashboard"><a data-nav="dashboard" aria-current="@(Active("Home") ? "page" : null)" class="nav-link @(Active("Home") ? "active" : null)" asp-controller="Home" asp-action="Index">Dashboard</a></li>
+                                <li class="nav-item" data-policy="@Policies.ViewDashboard"><a data-nav="dashboard" aria-current="@(Active("Home") ? "page" : null)" class="nav-link @(Active("Home") ? "active" : null)" asp-controller="Home" asp-action="Index">ホーム</a></li>
                             }
                             @if (canManageParties)
                             {
-                                <li class="nav-item" data-policy="@Policies.ManageParties"><a data-nav="customers" aria-current="@(Active("Customers") ? "page" : null)" class="nav-link @(Active("Customers") ? "active" : null)" asp-controller="Customers" asp-action="Index">Customers</a></li>
-                                <li class="nav-item"><a data-nav="business-partners" aria-current="@(Active("BusinessPartners") ? "page" : null)" class="nav-link @(Active("BusinessPartners") ? "active" : null)" asp-controller="BusinessPartners" asp-action="Index">Business partners</a></li>
+                                <li class="nav-item" data-policy="@Policies.ManageParties"><a data-nav="customers" aria-current="@(Active("Customers") ? "page" : null)" class="nav-link @(Active("Customers") ? "active" : null)" asp-controller="Customers" asp-action="Index">顧客</a></li>
+                                <li class="nav-item"><a data-nav="business-partners" aria-current="@(Active("BusinessPartners") ? "page" : null)" class="nav-link @(Active("BusinessPartners") ? "active" : null)" asp-controller="BusinessPartners" asp-action="Index">協力会社</a></li>
                             }
                             @if (canReadSales)
                             {
-                                <li class="nav-item" data-policy="@Policies.ReadSales"><a data-nav="sales" aria-current="@(Active("Sales") ? "page" : null)" class="nav-link @(Active("Sales") ? "active" : null)" asp-controller="Sales" asp-action="Index">Sales</a></li>
+                                <li class="nav-item" data-policy="@Policies.ReadSales"><a data-nav="sales" aria-current="@(Active("Sales") ? "page" : null)" class="nav-link @(Active("Sales") ? "active" : null)" asp-controller="Sales" asp-action="Index">営業案件</a></li>
                             }
                             @if (canReadWorkOrders)
                             {
-                                <li class="nav-item" data-policy="@Policies.ReadWorkOrders"><a data-nav="work-orders" aria-current="@(Active("WorkOrders") ? "page" : null)" class="nav-link @(Active("WorkOrders") ? "active" : null)" asp-controller="WorkOrders" asp-action="Index">Work orders</a></li>
-                                <li class="nav-item"><a data-nav="work-history" aria-current="@(Active("WorkHistory") ? "page" : null)" class="nav-link @(Active("WorkHistory") ? "active" : null)" asp-controller="WorkHistory" asp-action="Index">Work history</a></li>
+                                <li class="nav-item" data-policy="@Policies.ReadWorkOrders"><a data-nav="work-orders" aria-current="@(Active("WorkOrders") ? "page" : null)" class="nav-link @(Active("WorkOrders") ? "active" : null)" asp-controller="WorkOrders" asp-action="Index">作業予定</a></li>
+                                <li class="nav-item"><a data-nav="work-history" aria-current="@(Active("WorkHistory") ? "page" : null)" class="nav-link @(Active("WorkHistory") ? "active" : null)" asp-controller="WorkHistory" asp-action="Index">作業履歴</a></li>
                             }
                             @if (canViewBranchProgress)
                             {
                                 <li class="nav-item">
                                 @if (User.IsInRole(DemoRoleNames.SystemAdministrator))
                                 {
-                                    <a data-nav="branches" aria-current="@(Active("Branches") ? "page" : null)" class="nav-link @(Active("Branches") ? "active" : null)" asp-controller="Branches" asp-action="Index">Branch progress</a>
+                                    <a data-nav="branches" aria-current="@(Active("Branches") ? "page" : null)" class="nav-link @(Active("Branches") ? "active" : null)" asp-controller="Branches" asp-action="Index">支店状況</a>
                                 }
                                 else
                                 {
-                                    <a data-nav="branches" aria-current="@(Active("Branches") ? "page" : null)" class="nav-link @(Active("Branches") ? "active" : null)" asp-controller="Branches" asp-action="Details" asp-route-id="@branchId">Branch progress</a>
+                                    <a data-nav="branches" aria-current="@(Active("Branches") ? "page" : null)" class="nav-link @(Active("Branches") ? "active" : null)" asp-controller="Branches" asp-action="Details" asp-route-id="@branchId">支店状況</a>
                                 }
                                 </li>
                             }
                             @if (canViewAudit)
                             {
-                                <li class="nav-item" data-policy="@Policies.ViewAudit"><a data-nav="audit" aria-current="@(Active("Audit") ? "page" : null)" class="nav-link @(Active("Audit") ? "active" : null)" asp-controller="Audit" asp-action="Index">Audit</a></li>
+                                <li class="nav-item" data-policy="@Policies.ViewAudit"><a data-nav="audit" aria-current="@(Active("Audit") ? "page" : null)" class="nav-link @(Active("Audit") ? "active" : null)" asp-controller="Audit" asp-action="Index">変更履歴</a></li>
                             }
                         </ul>
                     </nav>
@@ -133,6 +135,7 @@
     <footer class="border-top text-muted py-3">
         <div class="container-fluid">&copy; 2026 - FieldOps Portal - Fictional demonstration data only</div>
     </footer>
+    <partial name="_ConfirmActionModal" />
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
