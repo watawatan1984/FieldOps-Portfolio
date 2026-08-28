@@ -12,6 +12,7 @@ public sealed class WorkOrderPage(IPage page)
         await page.GetByLabel("作業日", new() { Exact = true }).FillAsync("2026-12-10");
         await page.GetByLabel("開始時刻", new() { Exact = true }).FillAsync("10:30");
         await page.GetByRole(AriaRole.Button, new() { Name = "日程と担当者を保存する", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "実行する", Exact = true }).ClickAsync();
         await Assertions.Expect(page.GetByText("予定あり", new() { Exact = true })).ToBeVisibleAsync();
     }
 

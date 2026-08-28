@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = "作業記録を追加する";
     IReadOnlyList<WorkEventType> eventTypes = (IReadOnlyList<WorkEventType>)ViewData["EventTypes"]!;
+    string workOrderId = ViewContext.RouteData.Values["id"]?.ToString() ?? string.Empty;
 }
 
 <nav aria-label="現在位置">
@@ -40,5 +41,6 @@
     </div>
     <div class="col-12">
         <button type="submit" class="btn btn-primary">作業記録を保存する</button>
+        <a class="btn btn-outline-secondary ms-2" href="/work-orders/@workOrderId">前の画面へ戻る</a>
     </div>
 </form>

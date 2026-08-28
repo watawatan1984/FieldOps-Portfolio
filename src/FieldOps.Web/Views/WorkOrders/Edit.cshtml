@@ -43,6 +43,13 @@
         <input asp-for="ScheduledTime" type="time" class="form-control" />
     </div>
     <div class="col-12">
-        <button type="submit" class="btn btn-primary">日程と担当者を保存する</button>
+        <button type="submit"
+                class="btn btn-primary"
+                data-confirm-action
+                data-confirm-title="日程と担当者を保存しますか"
+                data-confirm-target="@options.PartyName"
+                data-confirm-message="状態を「予定あり」に変更します。"
+                data-confirm-impact="保存後、担当者はこの作業予定を開始できるようになります。">日程と担当者を保存する</button>
+        <a class="btn btn-outline-secondary ms-2" href="/work-orders/@Model.Id">前の画面へ戻る</a>
     </div>
 </form>

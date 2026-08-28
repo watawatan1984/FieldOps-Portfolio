@@ -83,3 +83,34 @@ complete
 ## 懸念
 
 - None known. E2E uses the Release web assembly, so Release build must precede E2E runs when Razor/UI changes are made.
+
+## Fix round 1
+
+### Status
+
+complete
+
+### RED
+
+- `dotnet test tests/FieldOps.IntegrationTests --filter "FullyQualifiedName~WorkOrderFeatureTests"` -> failed as expected before the fix: 日程保存ボタンの確認モーダル属性不足、Edit/AddEventの戻るリンク不足、利用者に見える競合・業務ルールエラーの英語表示で 8 tests failed。
+
+### 変更
+
+- `WorkOrders/Edit` の「日程と担当者を保存する」に Task 3 共通確認モーダル用 `data-confirm-action` / title / target / message / impact を追加した。
+- `WorkOrders/Edit` と `WorkOrders/AddEvent` の送信ボタン横に、submitを発生させない「前の画面へ戻る」リンクを追加した。
+- `WorkOrdersController` で利用者に見える競合・業務ルールエラーを安全な日本語へ変換し、未知のDomainExceptionは原文を表示しない汎用日本語にした。
+- E2Eの作業予定保存操作は、追加された確認モーダルの「実行する」を押して進むように更新した。
+
+### GREEN / テスト
+
+- `dotnet test tests/FieldOps.IntegrationTests --filter "FullyQualifiedName~WorkOrderFeatureTests"` -> passed, 15/15。
+- `dotnet build src/FieldOps.Web/FieldOps.Web.csproj -c Release` -> passed, 0 warnings, 0 errors。
+- `dotnet test tests/FieldOps.E2ETests --filter "FullyQualifiedName~FieldTechnicianTests|FullyQualifiedName~BranchManagerTests" -- Playwright.BrowserName=chromium` -> passed, 2/2。
+- `dotnet test FieldOps.sln --configuration Release --no-restore` -> passed: Domain 62/62, E2E 19/19, Integration 201/201。
+- `git diff --check` -> passed。CRLF変換警告のみ。
+
+### 自己レビュー / 懸念
+
+- 日程保存は Planned -> Scheduled の状態変更として確認対象になり、既存の `event.submitter` + one-shot flag + `requestSubmit(submitter)` 契約に乗る。
+- 英語業務メッセージは controller 内の変換キーとしてのみ残し、画面応答では日本語を検証した。
+- Minorの履歴順序は親指示どおり今回未対応。ほかに既知懸念なし。

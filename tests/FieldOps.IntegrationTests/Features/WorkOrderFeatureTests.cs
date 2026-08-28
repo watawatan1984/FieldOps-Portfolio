@@ -101,10 +101,17 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         Assert.DoesNotContain("作業を開始する", plannedHtml);
         using HttpResponseMessage editPage = await client.GetAsync($"/work-orders/{workOrderId}/edit");
         string editHtml = await editPage.Content.ReadAsStringAsync();
+        string decodedEditHtml = WebUtility.HtmlDecode(editHtml);
         Assert.Equal(HttpStatusCode.OK, editPage.StatusCode);
         Assert.DoesNotContain("UTC", editHtml);
         Assert.DoesNotContain("ISO 8601", editHtml);
         Assert.DoesNotContain("ending in Z", editHtml);
+        Assert.Contains("日程と担当者を保存する", decodedEditHtml);
+        Assert.Contains("data-confirm-action", editHtml);
+        Assert.Contains("data-confirm-target", editHtml);
+        Assert.Contains("状態を「予定あり」に変更します。", decodedEditHtml);
+        Assert.Contains("前の画面へ戻る", decodedEditHtml);
+        Assert.Contains($"href=\"/work-orders/{workOrderId}\"", editHtml);
         string token = ExtractAntiforgeryToken(editHtml);
         string version = GetInputValue(editHtml, "Version");
 
@@ -157,7 +164,9 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
             TransitionForm(version, WorkOrderStatus.Completed, token));
         Assert.Equal(HttpStatusCode.BadRequest, prematureCompletion.StatusCode);
 
-        (token, version, _) = await GetPageFormAsync(client, $"/work-orders/{id}/events/add");
+        (token, version, string addEventHtml) = await GetPageFormAsync(client, $"/work-orders/{id}/events/add");
+        Assert.Contains("前の画面へ戻る", WebUtility.HtmlDecode(addEventHtml));
+        Assert.Contains($"href=\"/work-orders/{id}\"", addEventHtml);
         using HttpResponseMessage eventAdded = await client.PostAsync(
             $"/work-orders/{id}/events/add",
             new FormUrlEncodedContent(new Dictionary<string, string>
@@ -312,7 +321,15 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage terminal = await client.PostAsync(
             $"/work-orders/{id}/transition",
             TransitionForm(cancelledVersion, WorkOrderStatus.InProgress, token));
+        string terminalHtml = WebUtility.HtmlDecode(await terminal.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.BadRequest, terminal.StatusCode);
+        Assert.Contains("この状態変更は実行できません。", terminalHtml);
+        Assert.DoesNotContain("WorkOrder transition", terminalHtml);
+        using HttpResponseMessage cancelledAddEvent = await client.GetAsync($"/work-orders/{id}/events/add");
+        string cancelledAddEventHtml = WebUtility.HtmlDecode(await cancelledAddEvent.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, cancelledAddEvent.StatusCode);
+        Assert.Contains("取り消し済みの作業予定には記録を追加できません。", cancelledAddEventHtml);
+        Assert.DoesNotContain("Cancelled work is read-only.", cancelledAddEventHtml);
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Assert.Equal(WorkOrderStatus.Cancelled, await dbContext.WorkOrders.Where(item => item.Id == id).Select(item => item.Status).SingleAsync());
@@ -352,7 +369,10 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage tampered = await client.PostAsync(
             $"/work-orders/{id}/edit",
             ScheduleForm(id, version, "foreign-branch-user-id", token));
+        string tamperedHtml = WebUtility.HtmlDecode(await tampered.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.BadRequest, tampered.StatusCode);
+        Assert.Contains("この支店の担当者を選んでください。", tamperedHtml);
+        Assert.DoesNotContain("Select a technician in this branch.", tamperedHtml);
 
         (token, version, _) = await GetPageFormAsync(client, $"/work-orders/{id}/edit");
         using HttpResponseMessage first = await client.PostAsync(
@@ -362,10 +382,10 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage stale = await client.PostAsync(
             $"/work-orders/{id}/edit",
             ScheduleForm(id, version, seed.CentralTechnicianUserId, token));
-        string staleHtml = await stale.Content.ReadAsStringAsync();
+        string staleHtml = WebUtility.HtmlDecode(await stale.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
-        Assert.Contains("no longer planned", staleHtml);
-        Assert.Contains(WorkOrderStatus.Scheduled.ToString(), staleHtml);
+        Assert.Contains("この作業予定は既に日程が決まっているため、もう一度日程を保存できません。", staleHtml);
+        Assert.Contains("予定あり", staleHtml);
         Assert.DoesNotContain("Schedule work order", staleHtml);
         using HttpResponseMessage editAfterScheduled = await client.GetAsync($"/work-orders/{id}/edit");
         Assert.Equal(HttpStatusCode.Redirect, editAfterScheduled.StatusCode);
@@ -397,10 +417,10 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage response = await client.PostAsync(
             $"/work-orders/{id}/edit",
             ScheduleForm(id, staleVersion, seed.CentralTechnicianUserId, token));
-        string html = await response.Content.ReadAsStringAsync();
+        string html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Contains("Review the latest version", html);
+        Assert.Contains("ほかの利用者が更新しました。最新の内容を確認して、もう一度実行してください。", html);
         Assert.NotEqual(staleVersion, GetInputValue(html, "Version"));
         Assert.Equal("2026-09-20", GetInputValue(html, "ScheduledDate"));
         Assert.Equal("10:30", GetInputValue(html, "ScheduledTime"));
@@ -479,8 +499,11 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
         using HttpResponseMessage response = await client.PostAsync(
             $"/work-orders/{id}/events/add",
             EventForm(version, WorkEventType.Completion, "Fictional future completion evidence.", token, "2026-09-20", "12:31"));
+        string futureHtml = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("未来の日時は記録できません。", futureHtml);
+        Assert.DoesNotContain("A work event timestamp cannot be in the future.", futureHtml);
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
         FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Assert.Empty(await dbContext.WorkOrders.Where(item => item.Id == id).SelectMany(item => item.Events).ToListAsync());
@@ -553,7 +576,9 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
             Assert.Equal(
                 [HttpStatusCode.Redirect, HttpStatusCode.Conflict],
                 responses.Select(response => response.StatusCode).OrderBy(status => status).ToArray());
-            Assert.Contains("latest version", await responses.Single(response => response.StatusCode == HttpStatusCode.Conflict).Content.ReadAsStringAsync());
+            string conflictHtml = WebUtility.HtmlDecode(await responses.Single(response => response.StatusCode == HttpStatusCode.Conflict).Content.ReadAsStringAsync());
+            Assert.Contains("最新の内容を確認", conflictHtml);
+            Assert.DoesNotContain("latest version", conflictHtml);
         }
 
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
@@ -592,8 +617,9 @@ public sealed class WorkOrderFeatureTests(PostgresFixture postgres)
             Assert.Equal(
                 [HttpStatusCode.Redirect, HttpStatusCode.Conflict],
                 responses.Select(response => response.StatusCode).OrderBy(status => status).ToArray());
-            string conflictHtml = await responses.Single(response => response.StatusCode == HttpStatusCode.Conflict).Content.ReadAsStringAsync();
-            Assert.Contains("latest version", conflictHtml);
+            string conflictHtml = WebUtility.HtmlDecode(await responses.Single(response => response.StatusCode == HttpStatusCode.Conflict).Content.ReadAsStringAsync());
+            Assert.Contains("最新の内容を確認", conflictHtml);
+            Assert.DoesNotContain("latest version", conflictHtml);
         }
 
         await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
