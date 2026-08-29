@@ -154,6 +154,39 @@ public sealed class DemoLoginTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task StartupReusesStableBranchIdsWhenExistingBranchNamesComeFromAnOlderDataset()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        DbContextOptions<FieldOpsDbContext> options = new DbContextOptionsBuilder<FieldOpsDbContext>()
+            .UseNpgsql(connectionString)
+            .Options;
+        await using (FieldOpsDbContext arrangeContext = new(options))
+        {
+            await arrangeContext.Database.MigrateAsync();
+            await arrangeContext.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO "Branches" ("Id", "Name", "CreatedAtUtc", "UpdatedAtUtc")
+                VALUES
+                    ('00000000-0000-4000-8000-000000000001', 'Fictional Central Service Branch', '2026-08-11T00:00:00Z', '2026-08-11T00:00:00Z'),
+                    ('00000000-0000-4000-8000-000000000002', 'Fictional Field Service Branch', '2026-08-11T00:00:00Z', '2026-08-11T00:00:00Z')
+                """);
+        }
+
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        using HttpClient client = application.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync("/demo-login");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext assertContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        Assert.Equal(2, await assertContext.Branches.CountAsync());
+        Assert.Equal(
+            ["Fictional Central Service Branch", "Fictional Field Service Branch"],
+            await assertContext.Branches.OrderBy(branch => branch.Id).Select(branch => branch.Name).ToArrayAsync());
+    }
+
+    [Fact]
     public async Task TamperedRoleChoiceIsRejectedWithoutAuthenticationCookie()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();

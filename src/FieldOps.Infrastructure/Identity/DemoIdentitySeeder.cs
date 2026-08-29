@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 
-using FieldOps.Domain.Entities;
 using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Persistence;
 
@@ -76,13 +75,14 @@ public sealed class DemoIdentitySeeder(
     private async Task EnsureBranchesAsync(CancellationToken cancellationToken)
     {
         DemoBranch[] startupBranches = DemoDataManifest.Branches.Take(2).ToArray();
-        string[] names = startupBranches.Select(branch => branch.Name).ToArray();
-        List<Branch> existing = await dbContext.Branches
-            .Where(branch => names.Contains(branch.Name))
+        Guid[] branchIds = startupBranches.Select(branch => branch.Id).ToArray();
+        List<Guid> existingBranchIds = await dbContext.Branches
+            .Where(branch => branchIds.Contains(branch.Id))
+            .Select(branch => branch.Id)
             .ToListAsync(cancellationToken);
 
         foreach (DemoBranch branch in startupBranches.Where(candidate =>
-            existing.All(current => current.Name != candidate.Name)))
+            !existingBranchIds.Contains(candidate.Id)))
         {
             await dbContext.Database.ExecuteSqlInterpolatedAsync(
                 $"""
