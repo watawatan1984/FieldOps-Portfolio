@@ -32,6 +32,7 @@ FieldOps Portalは、複数の支店で行う「顧客対応」「営業案件�
 - [デモ初期化の安全性](#デモ初期化の安全性)
 - [テストと検証結果](#テストと検証結果)
 - [公開環境の制約](#公開環境の制約)
+- [GASによる公開監視](#gasによる公開監視)
 
 > [!IMPORTANT]
 > このリポジトリは、業務システムの設計・実装・検証方法を公開するためにゼロから作成した**架空の再構成（fictional reconstruction）**です。実在する勤務先・顧客・本番システムのソースコード、データ、URL、認証情報は含みません。
@@ -160,6 +161,15 @@ dotnet test FieldOps.sln --configuration Release --no-build
 - Neon Freeも未使用時にscale-to-zeroするため、最初のDB接続が遅くなる場合があります。
 - 公開デモに対してbaseline/stress負荷試験は実行しません。
 - デモログインとデモ初期化は、承認済みの架空データセットでのみ有効にします。
+
+## GASによる公開監視
+
+Google Apps Scriptで公開デモを1時間ごとに外形監視し、`/health/live` と `/health/ready` を確認します。これは公開URLの状態を記録して異常に気づくための監視であり、Render Freeのスリープ回避を目的としません。
+
+- 異常と復旧のときだけメールを送ります。
+- 監視結果はGoogleスプレッドシートへ記録します。
+- Googleパスワード、Renderトークン、Cookie、APIキーは使いません。
+- 導入、停止、異常通知テスト、復旧通知テストの手順は [ops/google-apps-script/fieldops-health-monitor/README.md](ops/google-apps-script/fieldops-health-monitor/README.md) にまとめています。
 
 ## 公開検証の運用手順
 

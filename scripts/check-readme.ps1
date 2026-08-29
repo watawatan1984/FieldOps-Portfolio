@@ -31,6 +31,10 @@ $requiredPatterns = [ordered]@{
     "current test counts" = "Domain tests\s*\|\s*63/63[\s\S]*Integration tests\s*\|\s*213/213[\s\S]*Playwright E2E\s*\|\s*27/27[\s\S]*Full solution\s*\|\s*303/303"
     "load evidence" = "docs/evidence/load-test-results\.md"
     "free-host limitation" = "コールドスタート|scale-to-zero"
+    "GAS public monitor" = "## GASによる公開監視"
+    "hourly monitoring purpose" = "1時間ごとに.*health/live.*health/ready|health/live.*health/ready.*1時間ごと"
+    "monitor is not keepalive" = "スリープ回避を目的としません"
+    "monitor operations guide" = "ops/google-apps-script/fieldops-health-monitor/README\.md"
     "manual release verification operation" = "CIが成功[\s\S]*Renderの自動デプロイが完了[\s\S]*Release verificationを手動dispatch"
     "Japanese summary" = "## 日本語概要"
     "license status" = "ライセンスはまだ付与していません"
@@ -49,6 +53,18 @@ if ($missing.Count -gt 0) {
 
 if ($readme -match "real employer|production source|bug.?free|zero bugs") {
     throw "README contains a prohibited or misleading quality/source claim."
+}
+
+$gasMonitorReadmePath = Join-Path $repositoryRoot 'ops/google-apps-script/fieldops-health-monitor/README.md'
+if (-not (Test-Path -LiteralPath $gasMonitorReadmePath -PathType Leaf)) {
+    throw 'GAS monitor operations README was not found.'
+}
+
+$gasMonitorReadme = Get-Content -LiteralPath $gasMonitorReadmePath -Raw
+foreach ($requiredHeading in @('## 初期設定', '## 監視を開始', '## 監視を停止', '## 異常通知テスト', '## 復旧通知テスト', '## 必要な権限')) {
+    if ($gasMonitorReadme -notmatch [regex]::Escape($requiredHeading)) {
+        throw "GAS monitor operations README is missing: $requiredHeading"
+    }
 }
 
 $screenshotDirectory = Join-Path $repositoryRoot "docs/evidence/screenshots"
