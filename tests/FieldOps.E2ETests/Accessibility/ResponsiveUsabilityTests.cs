@@ -140,8 +140,9 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
             ILocator transitionButton = page.GetByRole(AriaRole.Button, new() { Name = "作業を開始する", Exact = true });
             await PressTabUntilFocusedAsync(page, transitionButton, "start work transition button");
             await page.Keyboard.PressAsync("Enter");
-            await Assertions.Expect(page.GetByRole(AriaRole.Dialog, new() { Name = "作業を開始しますか", Exact = true }))
-                .ToBeVisibleAsync();
+            ILocator confirmationDialog = page.GetByRole(AriaRole.Dialog, new() { Name = "作業を開始しますか", Exact = true });
+            await Assertions.Expect(confirmationDialog).ToBeVisibleAsync();
+            await Assertions.Expect(confirmationDialog).ToBeFocusedAsync();
             ILocator cancelButton = page.GetByRole(AriaRole.Button, new() { Name = "やめる", Exact = true });
             await PressTabUntilFocusedAsync(page, cancelButton, "confirmation cancel button", 4);
             await page.Keyboard.PressAsync("Enter");
