@@ -159,6 +159,236 @@ function stopMonitoring() {
     5);
 }
 
+function runHealthCheck() {
+  runWithLock_(function () {
+    const settings = readSettings_();
+    return runMonitorCycle_(settings.baseUrl, settings.recipient);
+  });
+}
+
+function runHealthCheckNow() {
+  const result = runWithLock_(function () {
+    const settings = readSettings_();
+    return runMonitorCycle_(settings.baseUrl, settings.recipient);
+  });
+  if (result) {
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      result.status === 'UP' ? '公開環境は正常です。' : '公開環境の異常を検知しました。',
+      'FieldOps監視',
+      8);
+  }
+}
+
+function sendFailureTest() {
+  const result = runWithLock_(function () {
+    const settings = readSettings_();
+    const properties = PropertiesService.getScriptProperties();
+    properties.setProperty(CONFIG.lastStatusProperty, 'UP');
+    properties.deleteProperty(CONFIG.lastDownAtProperty);
+    return runMonitorCycle_(CONFIG.failureTestBaseUrl, settings.recipient);
+  });
+  if (!result || result.status !== 'DOWN') {
+    throw new Error('テスト用の異常状態を確認できませんでした。');
+  }
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    '異常通知テストを実行しました。メールと監視履歴を確認してください。',
+    'FieldOps監視',
+    8);
+}
+
+function sendRecoveryTest() {
+  const result = runWithLock_(function () {
+    const properties = PropertiesService.getScriptProperties();
+    if (properties.getProperty(CONFIG.lastStatusProperty) !== 'DOWN') {
+      throw new Error('先に「テスト用の異常通知」を実行してください。');
+    }
+    const settings = readSettings_();
+    return runMonitorCycle_(settings.baseUrl, settings.recipient);
+  });
+  if (!result || result.status !== 'UP') {
+    throw new Error('公開環境が正常ではないため、復旧通知テストは完了していません。');
+  }
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    '復旧通知テストを実行しました。メールと監視履歴を確認してください。',
+    'FieldOps監視',
+    8);
+}
+
+function runWithLock_(action) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(CONFIG.lockWaitMs)) {
+    console.warn('先行する監視が実行中のため、今回の処理を中止しました。');
+    return null;
+  }
+  try {
+    return action();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function runMonitorCycle_(baseUrl, recipient) {
+  const result = probeUntilHealthy_(baseUrl);
+  let notificationError = '';
+  let historyError = '';
+
+  try {
+    notifyStateChange_(result, recipient);
+  } catch (error) {
+    notificationError = '通知失敗: ' + safeError_(error);
+  }
+
+  if (notificationError) {
+    result.errorSummary = [result.errorSummary, notificationError].filter(String).join(' / ');
+  }
+
+  try {
+    appendHistory_(result);
+  } catch (error) {
+    historyError = '履歴記録失敗: ' + safeError_(error);
+  }
+
+  if (notificationError || historyError) {
+    throw new Error([notificationError, historyError].filter(String).join(' / '));
+  }
+  return result;
+}
+
+function probeUntilHealthy_(baseUrl) {
+  const startedAt = Date.now();
+  let live = null;
+  let ready = null;
+  let attempts = 0;
+
+  for (let attempt = 1; attempt <= CONFIG.retryAttempts; attempt += 1) {
+    attempts = attempt;
+    live = probeEndpoint_(baseUrl + CONFIG.livePath);
+    ready = probeEndpoint_(baseUrl + CONFIG.readyPath);
+    if (live.ok && ready.ok) {
+      break;
+    }
+    if (attempt < CONFIG.retryAttempts) {
+      Utilities.sleep(CONFIG.retryDelayMs);
+    }
+  }
+
+  const status = live.ok && ready.ok ? 'UP' : 'DOWN';
+  return {
+    checkedAtJst: Utilities.formatDate(new Date(), CONFIG.timeZone, 'yyyy/MM/dd HH:mm:ss'),
+    baseUrl: baseUrl,
+    status: status,
+    live: live,
+    ready: ready,
+    elapsedSeconds: Math.round((Date.now() - startedAt) / 100) / 10,
+    attempts: attempts,
+    errorSummary: [
+      live.ok ? '' : 'live: ' + live.error,
+      ready.ok ? '' : 'ready: ' + ready.error
+    ].filter(String).join(' / ')
+  };
+}
+
+function probeEndpoint_(url) {
+  try {
+    const response = UrlFetchApp.fetch(url, {
+      method: 'get',
+      followRedirects: true,
+      muteHttpExceptions: true,
+      validateHttpsCertificates: true
+    });
+    const httpStatus = response.getResponseCode();
+    const body = response.getContentText().trim();
+    const ok = httpStatus === 200 && body === 'Healthy';
+    return {
+      ok: ok,
+      httpStatus: httpStatus,
+      error: ok ? '' : (httpStatus === 200 ? '応答本文がHealthyではありません' : 'HTTP ' + httpStatus)
+    };
+  } catch (error) {
+    return {ok: false, httpStatus: '取得失敗', error: safeError_(error)};
+  }
+}
+
+function notifyStateChange_(result, recipient) {
+  const properties = PropertiesService.getScriptProperties();
+  const previousStatus = properties.getProperty(CONFIG.lastStatusProperty);
+
+  if (previousStatus === result.status) {
+    return;
+  }
+  if (previousStatus === null && result.status === 'UP') {
+    properties.setProperty(CONFIG.lastStatusProperty, 'UP');
+    return;
+  }
+
+  const spreadsheetUrl = SpreadsheetApp.getActiveSpreadsheet().getUrl();
+  if (result.status === 'DOWN') {
+    MailApp.sendEmail(
+      recipient,
+      '[FieldOps監視] 公開環境の異常を検知しました',
+      buildDownMailBody_(result, spreadsheetUrl));
+    const downState = {};
+    downState[CONFIG.lastStatusProperty] = 'DOWN';
+    downState[CONFIG.lastDownAtProperty] = result.checkedAtJst;
+    properties.setProperties(downState);
+    return;
+  }
+
+  const lastDownAt = properties.getProperty(CONFIG.lastDownAtProperty) || '記録なし';
+  MailApp.sendEmail(
+    recipient,
+    '[FieldOps監視] 公開環境が復旧しました',
+    buildRecoveryMailBody_(result, lastDownAt, spreadsheetUrl));
+  properties.setProperty(CONFIG.lastStatusProperty, 'UP');
+  properties.deleteProperty(CONFIG.lastDownAtProperty);
+}
+
+function appendHistory_(result) {
+  const sheets = ensureSheets_();
+  sheets.historySheet.appendRow([
+    result.checkedAtJst,
+    result.status === 'UP' ? '正常' : '異常',
+    result.live.ok ? '正常' : '異常',
+    result.live.httpStatus,
+    result.ready.ok ? '正常' : '異常',
+    result.ready.httpStatus,
+    result.elapsedSeconds,
+    result.attempts,
+    result.errorSummary
+  ]);
+}
+
+function buildDownMailBody_(result, spreadsheetUrl) {
+  return [
+    'FieldOps公開環境の異常を検知しました。',
+    '',
+    '検知日時: ' + result.checkedAtJst,
+    '公開URL: ' + result.baseUrl,
+    'live結果: ' + (result.live.ok ? '正常' : '異常'),
+    'live HTTP状態: ' + result.live.httpStatus,
+    'ready結果: ' + (result.ready.ok ? '正常' : '異常'),
+    'ready HTTP状態: ' + result.ready.httpStatus,
+    '試行回数: ' + result.attempts,
+    '監視履歴: ' + spreadsheetUrl
+  ].join('\n');
+}
+
+function buildRecoveryMailBody_(result, lastDownAt, spreadsheetUrl) {
+  return [
+    'FieldOps公開環境が復旧しました。',
+    '',
+    '復旧日時: ' + result.checkedAtJst,
+    '公開URL: ' + result.baseUrl,
+    '異常検知日時: ' + lastDownAt,
+    '監視履歴: ' + spreadsheetUrl
+  ].join('\n');
+}
+
+function safeError_(error) {
+  const message = String(error && error.message ? error.message : error).replace(/[\r\n]+/g, ' ');
+  return message.length > 200 ? message.slice(0, 200) : message;
+}
+
 function assertHeader_(sheet, expectedHeaders, message) {
   const values = sheet.getRange(1, 1, 1, expectedHeaders.length).getDisplayValues()[0];
   const matches = expectedHeaders.every(function (expectedHeader, index) {
