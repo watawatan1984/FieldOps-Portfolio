@@ -48,6 +48,7 @@ public sealed class ProjectDependencyTests
 
         string code = File.ReadAllText(codePath);
         Assert.Contains("https://fieldops-portfolio.onrender.com", code, StringComparison.Ordinal);
+        Assert.Contains("baseUrl !== CONFIG.defaultBaseUrl", code, StringComparison.Ordinal);
         Assert.Contains("/health/live", code, StringComparison.Ordinal);
         Assert.Contains("/health/ready", code, StringComparison.Ordinal);
         Assert.Contains("everyHours(1)", code, StringComparison.Ordinal);

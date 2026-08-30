@@ -16,6 +16,7 @@ foreach ($path in @($codePath, $manifestPath)) {
 $code = Get-Content -LiteralPath $codePath -Raw
 $requiredPatterns = [ordered]@{
     'production base URL' = [regex]::Escape('https://fieldops-portfolio.onrender.com')
+    'fixed production base URL' = 'baseUrl\s*!==\s*CONFIG\.defaultBaseUrl'
     'safe failure-test URL' = [regex]::Escape('https://fieldops-monitor-test.invalid')
     'live health path' = [regex]::Escape('/health/live')
     'ready health path' = [regex]::Escape('/health/ready')

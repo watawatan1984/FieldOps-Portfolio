@@ -61,7 +61,7 @@ if (-not (Test-Path -LiteralPath $gasMonitorReadmePath -PathType Leaf)) {
 }
 
 $gasMonitorReadme = Get-Content -LiteralPath $gasMonitorReadmePath -Raw
-foreach ($requiredHeading in @('## 初期設定', '## 監視を開始', '## 監視を停止', '## 異常通知テスト', '## 復旧通知テスト', '## 必要な権限')) {
+foreach ($requiredHeading in @('## 初期設定', '## 監視を開始', '## 監視を停止', '## 異常通知テスト', '## 復旧通知テスト', '## 必要な権限', '## 困ったとき')) {
     if ($gasMonitorReadme -notmatch [regex]::Escape($requiredHeading)) {
         throw "GAS monitor operations README is missing: $requiredHeading"
     }

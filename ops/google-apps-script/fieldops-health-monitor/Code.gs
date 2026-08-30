@@ -104,8 +104,8 @@ function readSettings_() {
   const settingsSheet = ensureSheets_().settingsSheet;
   const baseUrl = settingsSheet.getRange('B2').getDisplayValue().trim().replace(/\/+$/, '');
   const recipient = settingsSheet.getRange('B3').getDisplayValue().trim();
-  if (!/^https:\/\/[^/?#]+$/.test(baseUrl)) {
-    throw new Error('公開URLはパスを含まないHTTPS URLで入力してください。');
+  if (baseUrl !== CONFIG.defaultBaseUrl) {
+    throw new Error('公開URLはFieldOpsの公開URLから変更できません。');
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
     throw new Error('通知先メールを1件入力してください。');
