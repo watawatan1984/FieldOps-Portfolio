@@ -137,6 +137,7 @@ dotnet run --project src/FieldOps.Web --launch-profile http
 | Integration tests | 213/213 | 実PostgreSQL、認可、同時実行、障害、安全な初期化        |
 | Playwright E2E    |   27/27 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤      |
 | Full solution     | 304/304 | Release構成、失敗・スキップ0                            |
+| GAS monitor       |     8/8 | 10分トリガー、10:00／18:00境界、時間外アクセス停止      |
 | Baseline load     |    PASS | 20 VUs / 10分、11,843 requests、p95 31.90 ms、HTTP失敗0 |
 | Stress load       |    PASS | 100 VUs / 5分、29,548 requests、p95 39.63 ms、HTTP失敗0 |
 
@@ -148,6 +149,7 @@ dotnet run --project src/FieldOps.Web --launch-profile http
 ```powershell
 dotnet build FieldOps.sln --configuration Release --no-restore -warnaserror
 dotnet test FieldOps.sln --configuration Release --no-build
+node --test tests/gas-health-monitor.test.mjs
 ./scripts/check-readme.ps1
 ```
 
@@ -164,7 +166,7 @@ dotnet test FieldOps.sln --configuration Release --no-build
 
 ## GASによる公開監視
 
-Google Apps Scriptで公開デモを1時間ごとに外形監視し、`/health/live` と `/health/ready` を確認します。これは公開URLの状態を記録して異常に気づくための監視であり、Render Freeのスリープ回避を目的としません。
+Google Apps Scriptで公開デモを毎日10:00以上18:00未満に約10分おきで外形監視し、`/health/live` と `/health/ready` を確認します。時間外はFieldOpsへアクセスしません。Render Freeは15分間通信がないと停止するため、この監視時間中は通常スリープが抑えられますが、Render側の再起動や停止を保証付きで防ぐ機能ではありません。
 
 - 異常と復旧のときだけメールを送ります。
 - 監視結果はGoogleスプレッドシートへ記録します。

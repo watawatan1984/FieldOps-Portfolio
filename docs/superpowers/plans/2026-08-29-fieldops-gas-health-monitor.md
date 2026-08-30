@@ -1,5 +1,7 @@
 # FieldOps GAS死活監視 Implementation Plan
 
+> 注記（2026-08-30）: この文書は初回導入時の履歴です。現在の実行仕様は、承認済み変更により「毎日10:00以上18:00未満に約10分おき、時間外はFieldOpsへアクセスしない」へ更新されています。現行仕様は同階層の設計仕様と運用READMEを参照してください。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Googleスプレッドシートに紐づくGoogle Apps ScriptからFieldOps公開環境を1時間ごとに外形監視し、履歴を日本語で残し、異常と復旧の状態変化だけをメール通知できるようにする。

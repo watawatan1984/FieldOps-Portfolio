@@ -26,6 +26,11 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Restore
         run: dotnet restore FieldOps.sln
 
@@ -37,6 +42,9 @@ jobs:
 
       - name: Run domain tests
         run: dotnet test tests/FieldOps.Domain.Tests --configuration Release --no-build --logger "trx;LogFileName=domain.trx" --results-directory TestResults/domain
+
+      - name: Run GAS monitor behavior tests
+        run: node --test tests/gas-health-monitor.test.mjs
 
       - name: Run integration tests
         run: dotnet test tests/FieldOps.IntegrationTests --configuration Release --no-build --logger "trx;LogFileName=integration.trx" --results-directory TestResults/integration

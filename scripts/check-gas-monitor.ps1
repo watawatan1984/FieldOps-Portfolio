@@ -25,7 +25,10 @@ $requiredPatterns = [ordered]@{
     'exact healthy body' = "body\s*===\s*'Healthy'"
     'muted HTTP exceptions' = 'muteHttpExceptions:\s*true'
     'script lock' = 'LockService\.getScriptLock\(\)'
-    'one-hour trigger' = 'everyHours\(1\)'
+    'ten-minute trigger' = 'everyMinutes\(10\)'
+    'monitoring start' = 'monitoringStartMinutes:\s*10\s*\*\s*60'
+    'monitoring end' = 'monitoringEndMinutes:\s*18\s*\*\s*60'
+    'monitoring window guard' = 'isWithinMonitoringWindow_\('
     'state property' = [regex]::Escape("lastStatusProperty: 'LAST_STATUS'")
     'down timestamp property' = [regex]::Escape("lastDownAtProperty: 'LAST_DOWN_AT'")
     'mail sender' = 'MailApp\.sendEmail\('
@@ -44,7 +47,7 @@ if ($missing.Count -gt 0) {
 }
 
 $prohibitedPatterns = [ordered]@{
-    'minute trigger' = 'everyMinutes\('
+    'hourly trigger' = 'everyHours\('
     'demo login ping' = '/demo-login'
     'cookie handling' = '(?i)cookie'
     'authorization header' = '(?i)authorization'

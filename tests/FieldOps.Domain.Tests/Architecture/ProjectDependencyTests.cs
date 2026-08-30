@@ -32,7 +32,7 @@ public sealed class ProjectDependencyTests
     }
 
     [Fact]
-    public void Gas_health_monitor_uses_hourly_checks_and_explicit_minimum_scopes()
+    public void Gas_health_monitor_uses_ten_minute_business_hours_checks_and_explicit_minimum_scopes()
     {
         string repositoryRoot = FindRepositoryRoot();
         string monitorRoot = Path.Combine(
@@ -51,8 +51,11 @@ public sealed class ProjectDependencyTests
         Assert.Contains("baseUrl !== CONFIG.defaultBaseUrl", code, StringComparison.Ordinal);
         Assert.Contains("/health/live", code, StringComparison.Ordinal);
         Assert.Contains("/health/ready", code, StringComparison.Ordinal);
-        Assert.Contains("everyHours(1)", code, StringComparison.Ordinal);
-        Assert.DoesNotContain("everyMinutes(", code, StringComparison.Ordinal);
+        Assert.Contains("everyMinutes(10)", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("everyHours(", code, StringComparison.Ordinal);
+        Assert.Contains("monitoringStartMinutes: 10 * 60", code, StringComparison.Ordinal);
+        Assert.Contains("monitoringEndMinutes: 18 * 60", code, StringComparison.Ordinal);
+        Assert.Contains("isWithinMonitoringWindow_", code, StringComparison.Ordinal);
         Assert.Contains("getHandlerFunction() === CONFIG.triggerHandler", code, StringComparison.Ordinal);
 
         using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));

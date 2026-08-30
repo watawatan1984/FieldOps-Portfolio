@@ -13,6 +13,9 @@ const CONFIG = Object.freeze({
   retryDelayMs: 15000,
   lockWaitMs: 1000,
   timeZone: 'Asia/Tokyo',
+  monitoringStartMinutes: 10 * 60,
+  monitoringEndMinutes: 18 * 60,
+  activeStateText: '監視中（10:00〜18:00／10分おき）',
   lastStatusProperty: 'LAST_STATUS',
   lastDownAtProperty: 'LAST_DOWN_AT'
 });
@@ -21,7 +24,7 @@ const SETTINGS_ROWS = Object.freeze([
   ['項目', '設定値', '説明'],
   ['公開URL', CONFIG.defaultBaseUrl, '末尾の / は自動で除去します'],
   ['通知先メール', '', '異常と復旧の通知先です'],
-  ['実行間隔', '1時間', '固定です'],
+  ['実行間隔', '10分', '毎日10:00以上18:00未満に監視します'],
   ['再試行回数', '5回', '初回を含みます'],
   ['再試行間隔', '15秒', 'コールドスタート待機用です'],
   ['監視状態', '停止中', '開始または停止メニューで更新します']
@@ -45,7 +48,7 @@ function onOpen() {
     .addItem('初期設定を作成', 'setupMonitoring')
     .addItem('今すぐ確認', 'runHealthCheckNow')
     .addSeparator()
-    .addItem('1時間ごとの監視を開始', 'startHourlyMonitoring')
+    .addItem('10:00〜18:00の10分監視を開始', 'startBusinessHoursMonitoring')
     .addItem('監視を停止', 'stopMonitoring')
     .addSeparator()
     .addItem('テスト用の異常通知', 'sendFailureTest')
@@ -91,7 +94,7 @@ function setupMonitoring() {
   if (!recipientCell.getDisplayValue().trim()) {
     recipientCell.setValue(Session.getEffectiveUser().getEmail());
   }
-  updateMonitoringState_(countHealthCheckTriggers_() === 1 ? '監視中' : '停止中');
+  updateMonitoringState_(countHealthCheckTriggers_() === 1 ? CONFIG.activeStateText : '停止中');
   getBoundSpreadsheet_().toast(
     recipientCell.getDisplayValue().trim()
       ? '初期設定を作成しました。公開URLと通知先メールを確認してください。'
@@ -117,6 +120,11 @@ function updateMonitoringState_(state) {
   ensureSheets_().settingsSheet.getRange('B7').setValue(state);
 }
 
+function updateScheduleSettings_(settingsSheet) {
+  settingsSheet.getRange('B4').setValue('10分');
+  settingsSheet.getRange('C4').setValue('毎日10:00以上18:00未満に監視します');
+}
+
 function countHealthCheckTriggers_() {
   return ScriptApp.getProjectTriggers().filter(function (trigger) {
     return trigger.getHandlerFunction() === CONFIG.triggerHandler;
@@ -134,17 +142,29 @@ function deleteHealthCheckTriggers_() {
   return deletedCount;
 }
 
-function startHourlyMonitoring() {
-  ensureSheets_();
-  readSettings_();
+function isWithinMonitoringWindow_(now) {
+  const timeParts = Utilities.formatDate(now, CONFIG.timeZone, 'HH:mm').split(':');
+  const minutesSinceMidnight = Number(timeParts[0]) * 60 + Number(timeParts[1]);
+  return minutesSinceMidnight >= CONFIG.monitoringStartMinutes &&
+    minutesSinceMidnight < CONFIG.monitoringEndMinutes;
+}
+
+function replaceHealthCheckTrigger_() {
   deleteHealthCheckTriggers_();
   ScriptApp.newTrigger(CONFIG.triggerHandler)
     .timeBased()
-    .everyHours(1)
+    .everyMinutes(10)
     .create();
-  updateMonitoringState_('監視中');
+}
+
+function startBusinessHoursMonitoring() {
+  const sheets = ensureSheets_();
+  updateScheduleSettings_(sheets.settingsSheet);
+  readSettings_();
+  replaceHealthCheckTrigger_();
+  updateMonitoringState_(CONFIG.activeStateText);
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    '1時間ごとの監視を開始しました。',
+    '10:00〜18:00の10分監視を開始しました。18:00以降はアクセスしません。',
     'FieldOps監視',
     5);
 }
@@ -160,7 +180,15 @@ function stopMonitoring() {
 }
 
 function runHealthCheck() {
-  runWithLock_(function () {
+  return runScheduledHealthCheckAt_(new Date());
+}
+
+function runScheduledHealthCheckAt_(checkedAt) {
+  if (!isWithinMonitoringWindow_(checkedAt)) {
+    console.info('監視時間外のため、定期監視を実行しません。');
+    return null;
+  }
+  return runWithLock_(function () {
     const settings = readSettings_();
     return runMonitorCycle_(settings.baseUrl, settings.recipient);
   });
