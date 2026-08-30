@@ -170,6 +170,7 @@ Google Apps Scriptで公開デモを1時間ごとに外形監視し、`/health/l
 - 監視結果はGoogleスプレッドシートへ記録します。
 - Googleパスワード、Renderトークン、Cookie、APIキーは使いません。
 - 導入、停止、異常通知テスト、復旧通知テストの手順は [ops/google-apps-script/fieldops-health-monitor/README.md](ops/google-apps-script/fieldops-health-monitor/README.md) にまとめています。
+- 実環境で確認した結果は [GAS死活監視 検証結果](docs/evidence/gas-health-monitor-verification.md) にまとめています。
 
 ## 公開検証の運用手順
 
