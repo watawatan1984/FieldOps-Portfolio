@@ -1,0 +1,136 @@
+@model FieldOps.Features.Quotes.QuoteEditInput
+@using FieldOps.Features.Quotes
+@{
+    var options = (QuoteEditorOptions)ViewData["EditorOptions"]!;
+    bool isCreate = (bool)(ViewData["IsCreate"] ?? false);
+    ViewData["Title"] = isCreate ? "見積を登録する" : "見積を編集する";
+}
+
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item"><a asp-action="Index" asp-route-branchId="@Model.BranchId">見積</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@(isCreate ? "登録" : "編集")</li>
+    </ol>
+</nav>
+
+<h1>@(isCreate ? "見積を登録する" : "見積を編集する")</h1>
+<p class="text-body-secondary">担当支店: <strong>@options.BranchName</strong></p>
+
+<form asp-action="@(isCreate ? "Create" : "Edit")" asp-route-id="@(isCreate ? null : Model.Id)" method="post">
+    <div asp-validation-summary="All" class="text-danger" role="alert" tabindex="-1"></div>
+    <input asp-for="Id" type="hidden" />
+    <input asp-for="BranchId" type="hidden" />
+    <input asp-for="Version" type="hidden" />
+    @if (isCreate)
+    {
+        <div class="mb-3">
+            <label asp-for="SalesOpportunityId" class="form-label"></label>
+            <select asp-for="SalesOpportunityId" class="form-select">
+                <option value="">営業案件を選んでください</option>
+                @foreach (var opportunity in options.Opportunities)
+                {
+                    <option value="@opportunity.SalesOpportunityId">@opportunity.PartyName - @opportunity.SiteName（@UiDisplayText.ForSalesStatus(opportunity.Status)）</option>
+                }
+            </select>
+            <span asp-validation-for="SalesOpportunityId" class="text-danger"></span>
+        </div>
+    }
+    else
+    {
+        <div class="mb-3">
+            <label asp-for="SalesOpportunityId" class="form-label"></label>
+            <select class="form-select" disabled>
+                <option selected>@(ViewData["OpportunitySummary"] as string ?? "変更できません")</option>
+            </select>
+            <input asp-for="SalesOpportunityId" type="hidden" />
+            <div class="form-text">営業案件は変更できません。</div>
+        </div>
+    }
+    <div class="mb-3">
+        <label asp-for="OwnerUserId" class="form-label"></label>
+        <select asp-for="OwnerUserId" class="form-select">
+            <option value="">営業担当者を選んでください</option>
+            @foreach (var owner in options.Owners)
+            {
+                <option value="@owner.Id">@owner.DisplayName</option>
+            }
+        </select>
+        <span asp-validation-for="OwnerUserId" class="text-danger"></span>
+    </div>
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label asp-for="TaxRatePercent" class="form-label"></label>
+            <input asp-for="TaxRatePercent" class="form-control" type="number" step="0.01" min="0" max="100" data-quote-tax-rate />
+            <span asp-validation-for="TaxRatePercent" class="text-danger"></span>
+        </div>
+        <div class="col-md-4 mb-3">
+            <label asp-for="ValidUntil" class="form-label"></label>
+            <input asp-for="ValidUntil" class="form-control" type="date" />
+            <span asp-validation-for="ValidUntil" class="text-danger"></span>
+        </div>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Notes" class="form-label"></label>
+        <textarea asp-for="Notes" class="form-control" rows="3"></textarea>
+        <span asp-validation-for="Notes" class="text-danger"></span>
+    </div>
+
+    <h2 class="h4">明細</h2>
+    <div id="quote-line-items" data-line-items-container>
+        @for (int i = 0; i < Model.LineItems.Count; i++)
+        {
+            <div class="row g-2 align-items-end mb-2 quote-line-item" data-line-item-row>
+                <div class="col-md-4">
+                    <label asp-for="LineItems[i].Description" class="form-label" data-field-label="Description"></label>
+                    <input asp-for="LineItems[i].Description" class="form-control" maxlength="200" data-field="Description" />
+                    <span asp-validation-for="LineItems[i].Description" class="text-danger"></span>
+                </div>
+                <div class="col-md-2">
+                    <label asp-for="LineItems[i].UnitName" class="form-label" data-field-label="UnitName"></label>
+                    <input asp-for="LineItems[i].UnitName" class="form-control" maxlength="16" data-field="UnitName" />
+                    <span asp-validation-for="LineItems[i].UnitName" class="text-danger"></span>
+                </div>
+                <div class="col-md-2">
+                    <label asp-for="LineItems[i].Quantity" class="form-label" data-field-label="Quantity"></label>
+                    <input asp-for="LineItems[i].Quantity" class="form-control" type="number" step="0.01" min="0.01" data-field="Quantity" data-line-item-quantity />
+                    <span asp-validation-for="LineItems[i].Quantity" class="text-danger"></span>
+                </div>
+                <div class="col-md-2">
+                    <label asp-for="LineItems[i].UnitPrice" class="form-label" data-field-label="UnitPrice"></label>
+                    <input asp-for="LineItems[i].UnitPrice" class="form-control" type="number" step="0.01" min="0" data-field="UnitPrice" data-line-item-unit-price />
+                    <span asp-validation-for="LineItems[i].UnitPrice" class="text-danger"></span>
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-danger w-100" data-remove-line-item>この行を削除</button>
+                </div>
+            </div>
+        }
+    </div>
+    <button type="button" class="btn btn-outline-secondary mt-2 mb-3" data-add-line-item>明細を追加</button>
+    <div>
+        <span asp-validation-for="LineItems" class="text-danger d-block"></span>
+    </div>
+
+    <section class="card task-card mb-3" aria-labelledby="quote-preview-heading">
+        <div class="card-body">
+            <h2 id="quote-preview-heading" class="h5">金額プレビュー</h2>
+            <p class="text-body-secondary small mb-2">保存すると実際の金額はサーバーで再計算されます。</p>
+            <dl class="row mb-0">
+                <dt class="col-sm-3">小計</dt>
+                <dd class="col-sm-9" data-quote-subtotal>¥0</dd>
+                <dt class="col-sm-3">消費税</dt>
+                <dd class="col-sm-9" data-quote-tax>¥0</dd>
+                <dt class="col-sm-3">合計</dt>
+                <dd class="col-sm-9" data-quote-total>¥0</dd>
+            </dl>
+        </div>
+    </section>
+
+    <button type="submit" class="btn btn-primary">@(isCreate ? "見積を登録する" : "変更を保存する")</button>
+    <a asp-action="Index" asp-route-branchId="@Model.BranchId" class="btn btn-link">やめる</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

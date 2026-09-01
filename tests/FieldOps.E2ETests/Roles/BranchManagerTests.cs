@@ -41,10 +41,10 @@ public sealed class BranchManagerTests(FieldOpsWebFixture fixture)
             await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { Name = "次の行動を確認する" }).First)
                 .ToBeVisibleAsync();
             await page.Locator("[data-nav='customers']").ClickAsync();
-            await new PartyPage(page).EditAsync("架空設備サービス 01", "架空設備サービス 01 Manager");
+            await new PartyPage(page).EditAsync("架空設備サービス 001", "架空設備サービス 001 Manager");
             await page.Locator("[data-nav='work-orders']").ClickAsync();
             DateTime scheduleStartedUtc = DateTime.UtcNow;
-            await new WorkOrderPage(page).ScheduleAsync("架空設備サービス 01 Manager");
+            await new WorkOrderPage(page).ScheduleAsync("架空設備サービス 001 Manager");
             ScheduledWorkProof work = await fixture.QuerySingleAsync(
                 "SELECT \"Status\", \"AssignedUserId\", \"ScheduledStartUtc\", \"BranchId\" FROM \"WorkOrders\" WHERE \"Id\" = '30000000-0000-4000-8000-000000000001'",
                 reader => new ScheduledWorkProof(

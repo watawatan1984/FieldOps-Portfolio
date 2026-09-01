@@ -17,6 +17,7 @@ public sealed class FieldOpsDbContext(DbContextOptions<FieldOpsDbContext> option
     public DbSet<DemoDatasetMarker> DemoDatasetMarkers => Set<DemoDatasetMarker>();
     public DbSet<DemoResetExecution> DemoResetExecutions => Set<DemoResetExecution>();
     public DbSet<Party> Parties => Set<Party>();
+    public DbSet<Quote> Quotes => Set<Quote>();
     public DbSet<SalesOpportunity> SalesOpportunities => Set<SalesOpportunity>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
 

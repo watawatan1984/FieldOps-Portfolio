@@ -14,6 +14,7 @@
     bool canViewDashboard = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ViewDashboard)).Succeeded;
     bool canManageParties = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ManageParties)).Succeeded;
     bool canReadSales = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ReadSales)).Succeeded;
+    bool canReadQuotes = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ReadSales)).Succeeded;
     bool canReadWorkOrders = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ReadWorkOrders)).Succeeded;
     bool canViewAudit = authenticated && (await AuthorizationService.AuthorizeAsync(User, Policies.ViewAudit)).Succeeded;
     bool canResetDemo = authenticated &&
@@ -90,6 +91,10 @@
                             @if (canReadSales)
                             {
                                 <li class="nav-item" data-policy="@Policies.ReadSales"><a data-nav="sales" aria-current="@(Active("Sales") ? "page" : null)" class="nav-link @(Active("Sales") ? "active" : null)" asp-controller="Sales" asp-action="Index">営業案件</a></li>
+                            }
+                            @if (canReadQuotes)
+                            {
+                                <li class="nav-item" data-policy="@Policies.ReadSales"><a data-nav="quotes" aria-current="@(Active("Quotes") ? "page" : null)" class="nav-link @(Active("Quotes") ? "active" : null)" asp-controller="Quotes" asp-action="Index">見積</a></li>
                             }
                             @if (canReadWorkOrders)
                             {

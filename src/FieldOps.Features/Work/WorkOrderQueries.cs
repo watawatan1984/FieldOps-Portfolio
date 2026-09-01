@@ -86,8 +86,13 @@ public sealed class WorkOrderQueries(
                 workOrder.ScheduledStartUtc
             })
             .ToListAsync(cancellationToken);
+        // Display resolution is intentionally tenant-wide (branchId: null): a work order's assigned
+        // technician may have been transferred to another branch since assignment, and the list must
+        // still show their name rather than falling back to a placeholder just because they are no
+        // longer stationed in this record's branch. Role membership is still required, so a technician
+        // whose role has been revoked continues to fall back to "未登録の担当者" below.
         IReadOnlyList<FieldOpsUserOption> technicians = await userDirectory.GetUsersInRoleAsync(
-            request.BranchId == Guid.Empty ? null : request.BranchId,
+            null,
             FieldTechnicianRole,
             cancellationToken);
         Dictionary<string, string> names = technicians.ToDictionary(user => user.Id, user => user.DisplayName);
@@ -136,8 +141,9 @@ public sealed class WorkOrderQueries(
             .Select(workEvent => new WorkEventSummary(workEvent.EventType, workEvent.OccurredAtUtc, workEvent.Summary))
             .ToList();
 
+        // Tenant-wide lookup (branchId: null) — see the matching comment in SearchAsync above.
         IReadOnlyList<FieldOpsUserOption> technicians = await userDirectory.GetUsersInRoleAsync(
-            workOrder.BranchId,
+            null,
             FieldTechnicianRole,
             cancellationToken);
         string? assignedName = workOrder.AssignedUserId is null

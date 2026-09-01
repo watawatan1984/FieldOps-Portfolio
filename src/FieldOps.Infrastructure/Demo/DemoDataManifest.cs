@@ -8,10 +8,11 @@ public static class DemoDataManifest
     public static readonly DateTime EpochUtc = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     public const int BranchCount = 5;
-    public const int PartyCount = 40;
-    public const int SalesOpportunityCount = 30;
-    public const int WorkOrderCount = 80;
-    public const int WorkEventCount = 250;
+    public const int PartyCount = 250;
+    public const int SalesOpportunityCount = 250;
+    public const int QuoteCount = 248;
+    public const int WorkOrderCount = 250;
+    public const int WorkEventCount = 750;
     public const int DemoUserCount = 4;
     public const int SeedAuditEntryCount = 20;
 
@@ -69,6 +70,10 @@ public static class DemoDataManifest
     public static Guid PartyId(int number) => NumberedGuid("10000000-0000-4000-8000-", number);
 
     public static Guid SalesOpportunityId(int number) => NumberedGuid("20000000-0000-4000-8000-", number);
+
+    public static Guid QuoteId(int number) => NumberedGuid("21000000-0000-4000-8000-", number);
+
+    public static Guid QuoteLineItemId(int number) => NumberedGuid("22000000-0000-4000-8000-", number);
 
     public static Guid WorkOrderId(int number) => NumberedGuid("30000000-0000-4000-8000-", number);
 

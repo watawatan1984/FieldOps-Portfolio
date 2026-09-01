@@ -4,6 +4,7 @@ using FieldOps.Features.Abstractions;
 using FieldOps.Features.Administration;
 using FieldOps.Features.Dashboard;
 using FieldOps.Features.Parties;
+using FieldOps.Features.Quotes;
 using FieldOps.Features.Sales;
 using FieldOps.Features.Work;
 using FieldOps.Infrastructure;
@@ -12,6 +13,7 @@ using FieldOps.Infrastructure.Identity;
 using FieldOps.Infrastructure.Persistence;
 using FieldOps.Web.Authorization;
 using FieldOps.Web.Controllers;
+using FieldOps.Web.Documents;
 using FieldOps.Web.Logging;
 using FieldOps.Web.Middleware;
 using FieldOps.Web.Services;
@@ -25,6 +27,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
+
+using QuestPDF.Infrastructure;
 
 if (args.Length == 1 && string.Equals(args[0], "--health-check", StringComparison.Ordinal))
 {
@@ -53,6 +57,13 @@ if (args.Length == 1 && string.Equals(args[0], "--health-check", StringCompariso
 
 var builder = WebApplication.CreateBuilder(args);
 CultureInfo japaneseCulture = CultureInfo.GetCultureInfo("ja-JP");
+
+// The runtime container installs no font packages, so QuestPDF must not fall back to
+// environment fonts: register the embedded Japanese font explicitly (see QuoteDocumentFonts)
+// and disable the environment-fonts search so behavior is identical in Docker and local dev.
+QuestPDF.Settings.License = LicenseType.Community;
+QuestPDF.Settings.UseEnvironmentFonts = false;
+QuoteDocumentFonts.Register();
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole(options => options.FormatterName = RedactedJsonConsoleFormatter.FormatterName);
@@ -123,6 +134,8 @@ builder.Services.AddScoped<BranchProgressQueries>();
 builder.Services.AddScoped<AuditQueries>();
 builder.Services.AddScoped<PartyQueries>();
 builder.Services.AddScoped<PartyCommands>();
+builder.Services.AddScoped<QuoteQueries>();
+builder.Services.AddScoped<QuoteCommands>();
 builder.Services.AddScoped<SalesQueries>();
 builder.Services.AddScoped<SalesCommands>();
 builder.Services.AddScoped<WorkOrderCommands>();

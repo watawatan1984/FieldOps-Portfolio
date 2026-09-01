@@ -46,6 +46,26 @@ public static class UiDisplayText
         _ => "状態を確認してください"
     };
 
+    public static string ForQuoteStatus(QuoteStatus status) => status switch
+    {
+        QuoteStatus.Draft => "下書き",
+        QuoteStatus.Issued => "発行済み",
+        QuoteStatus.Accepted => "承認",
+        QuoteStatus.Rejected => "失注",
+        QuoteStatus.Expired => "期限切れ",
+        _ => "未定義"
+    };
+
+    public static string ForQuoteStatusDescription(QuoteStatus status) => status switch
+    {
+        QuoteStatus.Draft => "内容を作成中",
+        QuoteStatus.Issued => "顧客の回答待ち",
+        QuoteStatus.Accepted => "受注へ進められます",
+        QuoteStatus.Rejected => "対応終了",
+        QuoteStatus.Expired => "有効期限が過ぎました",
+        _ => "状態を確認してください"
+    };
+
     public static string ForWorkOrderStatus(WorkOrderStatus status) => status switch
     {
         WorkOrderStatus.Planned => "未設定",
@@ -69,6 +89,7 @@ public static class UiDisplayText
     {
         "Party" => "取引先",
         "SalesOpportunity" => "営業案件",
+        "Quote" => "見積",
         "WorkOrder" => "作業予定",
         "DemoReset" => "デモリセット",
         _ => "未定義"
@@ -126,7 +147,9 @@ public static class UiDisplayText
         "ExpectedCloseDate" => "受注予定日",
         "IsBusinessPartner" => "協力会社区分",
         "IsCustomer" => "顧客区分",
+        "LineItems" => "明細",
         "NextStatus" => "変更後の状態",
+        "Notes" => "備考",
         "OccurredAtUtc" => "発生日時",
         "OrganizationName" => "組織名",
         "OwnerUserId" => "営業担当者",
@@ -140,6 +163,8 @@ public static class UiDisplayText
         "Status" => "状態",
         "Summary" => "内容",
         "TargetBranchId" => "対象支店",
+        "TaxRatePercent" => "消費税率",
+        "ValidUntil" => "有効期限",
         "詳細は非表示です" => "詳細は非表示です",
         _ => "未定義"
     };

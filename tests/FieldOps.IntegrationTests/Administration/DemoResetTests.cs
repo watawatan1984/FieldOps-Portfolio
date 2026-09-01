@@ -417,6 +417,7 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
         Assert.Equal(DemoDataManifest.BranchCount, await dbContext.Branches.CountAsync());
         Assert.Equal(DemoDataManifest.PartyCount, await dbContext.Parties.CountAsync());
         Assert.Equal(DemoDataManifest.SalesOpportunityCount, await dbContext.SalesOpportunities.CountAsync());
+        Assert.Equal(DemoDataManifest.QuoteCount, await dbContext.Quotes.CountAsync());
         Assert.Equal(DemoDataManifest.WorkOrderCount, await dbContext.WorkOrders.CountAsync());
         Assert.Equal(DemoDataManifest.WorkEventCount, await dbContext.Set<FieldOps.Domain.Entities.WorkEvent>().CountAsync());
         Assert.Equal(DemoDataManifest.DemoUserCount, await dbContext.Users.CountAsync());
@@ -441,7 +442,7 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
                 .Select(user => user.DisplayName)
                 .ToArrayAsync());
         Assert.Equal(
-            "架空設備サービス 01",
+            "架空設備サービス 001",
             await dbContext.Parties
                 .Where(party => party.Id == DemoDataManifest.PartyId(1))
                 .Select(party => party.OrganizationName)
@@ -749,6 +750,7 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
         Assert.Equal(DemoDataManifest.BranchCount, await dbContext.Branches.CountAsync());
         Assert.Equal(DemoDataManifest.PartyCount, await dbContext.Parties.CountAsync());
         Assert.Equal(DemoDataManifest.SalesOpportunityCount, await dbContext.SalesOpportunities.CountAsync());
+        Assert.Equal(DemoDataManifest.QuoteCount, await dbContext.Quotes.CountAsync());
         Assert.Equal(DemoDataManifest.WorkOrderCount, await dbContext.WorkOrders.CountAsync());
         Assert.Equal(
             DemoDataManifest.WorkEventCount,
@@ -1168,12 +1170,13 @@ public sealed partial class DemoResetTests(PostgresFixture fixture) : IAsyncLife
         Assert.Equal(DemoDataManifest.BranchCount, await dbContext.Branches.CountAsync());
         Assert.Equal(DemoDataManifest.PartyCount, await dbContext.Parties.CountAsync());
         Assert.Equal(DemoDataManifest.SalesOpportunityCount, await dbContext.SalesOpportunities.CountAsync());
+        Assert.Equal(DemoDataManifest.QuoteCount, await dbContext.Quotes.CountAsync());
         Assert.Equal(DemoDataManifest.WorkOrderCount, await dbContext.WorkOrders.CountAsync());
         Assert.Equal(DemoDataManifest.WorkEventCount, await dbContext.Set<FieldOps.Domain.Entities.WorkEvent>().CountAsync());
         Assert.Equal(DemoDataManifest.DemoUserCount, await dbContext.Users.CountAsync());
         Assert.Equal(DemoDataManifest.SeedAuditEntryCount + 4, await dbContext.AuditEntries.CountAsync());
         Assert.Equal(2, await dbContext.DemoResetExecutions.CountAsync());
-        Assert.Equal(20, await dbContext.Parties.CountAsync(party => party.Roles.Count == 2));
+        Assert.Equal(125, await dbContext.Parties.CountAsync(party => party.Roles.Count == 2));
         Assert.Equal(8, await dbContext.SalesOpportunities.Select(item => item.Status).Distinct().CountAsync());
         Assert.Equal(5, await dbContext.WorkOrders.Select(item => item.Status).Distinct().CountAsync());
         Assert.Equal(DemoDataManifest.EpochUtc, await dbContext.Branches

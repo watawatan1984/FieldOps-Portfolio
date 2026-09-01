@@ -6,6 +6,17 @@
     <ProjectReference Include="..\FieldOps.Infrastructure\FieldOps.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="QuestPDF" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SIL Open Font License Japanese font, embedded so QuestPDF can render 見積書 PDFs without
+         relying on any fonts being installed in the runtime container. See Resources/Fonts/OFL.txt. -->
+    <EmbeddedResource Include="Resources\Fonts\IBMPlexSansJP-Regular.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\IBMPlexSansJP-Bold.ttf" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

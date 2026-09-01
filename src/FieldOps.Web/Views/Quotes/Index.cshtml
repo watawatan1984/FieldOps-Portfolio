@@ -1,0 +1,170 @@
+@model FieldOps.Features.Quotes.QuoteIndexViewModel
+@using FieldOps.Domain.Enums
+@using FieldOps.Infrastructure.Identity
+@{
+    ViewData["Title"] = "見積";
+    bool canCreate = !User.IsInRole(DemoRoleNames.FieldTechnician) && Model.Filters.BranchId != Guid.Empty;
+}
+
+<nav aria-label="現在位置">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">ホーム</a></li>
+        <li class="breadcrumb-item active" aria-current="page">見積</li>
+    </ol>
+</nav>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h1>見積</h1>
+        <p class="page-intro mb-1">有効期限と状態を先に確認できます。</p>
+        <p class="text-body-secondary mb-0">担当支店: <strong>@Model.BranchName</strong></p>
+    </div>
+    @if (canCreate)
+    {
+        <a class="btn btn-primary" asp-action="Create" asp-route-branchId="@Model.Filters.BranchId">新しい見積を登録する</a>
+    }
+</div>
+
+<form method="get" class="row g-2 mb-4" role="search">
+    @if (Model.CanSelectBranch)
+    {
+        <div class="col-md-4">
+            <label for="branch-filter" class="form-label">支店</label>
+            <select id="branch-filter" class="form-select" name="branchId">
+                <option value="">すべての支店</option>
+                @foreach (var branch in Model.Branches)
+                {
+                    <option value="@branch.Id" selected="@(branch.Id == Model.Filters.BranchId)">@branch.Name</option>
+                }
+            </select>
+        </div>
+    }
+    else
+    {
+        <input type="hidden" name="branchId" value="@Model.Filters.BranchId" />
+    }
+    <div class="col-md-4">
+        <label for="quote-search" class="form-label">見積番号・顧客名・現場名で検索</label>
+        <input id="quote-search" class="form-control" name="search" value="@Model.Filters.Search" />
+    </div>
+    <div class="col-md-4">
+        <label for="owner" class="form-label">営業担当者</label>
+        <select id="owner" class="form-select" name="ownerUserId">
+            <option value="">すべての営業担当者</option>
+            @foreach (var owner in Model.Owners)
+            {
+                <option value="@owner.Id" selected="@(owner.Id == Model.Filters.OwnerUserId)">@owner.DisplayName</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label for="status" class="form-label">状態</label>
+        <select id="status" class="form-select" name="status">
+            <option value="">すべての状態</option>
+            @foreach (QuoteStatus status in Enum.GetValues<QuoteStatus>())
+            {
+                <option value="@status" selected="@(status == Model.Filters.Status)">@UiDisplayText.ForQuoteStatus(status)</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label for="valid-from" class="form-label">有効期限（開始）</label>
+        <input id="valid-from" type="date" class="form-control" name="validUntilFrom" value="@Model.Filters.ValidUntilFrom?.ToString("yyyy-MM-dd")" />
+    </div>
+    <div class="col-md-4">
+        <label for="valid-to" class="form-label">有効期限（終了）</label>
+        <input id="valid-to" type="date" class="form-control" name="validUntilTo" value="@Model.Filters.ValidUntilTo?.ToString("yyyy-MM-dd")" />
+    </div>
+    <div class="col-12 align-self-end">
+        <button class="btn btn-primary" type="submit">この条件で探す</button>
+    </div>
+</form>
+
+@if (Model.Items.Count == 0)
+{
+    <p class="app-empty-state" role="status">条件に合う見積はまだありません。</p>
+}
+else
+{
+    <div class="responsive-records d-none d-xl-block">
+        <table class="table align-middle bg-white">
+            <thead>
+                <tr>
+                    <th scope="col">見積番号</th>
+                    <th scope="col">顧客</th>
+                    <th scope="col">現場</th>
+                    <th scope="col">状態</th>
+                    <th scope="col">合計金額</th>
+                    <th scope="col">有効期限</th>
+                    <th scope="col">営業担当者</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var quote in Model.Items)
+            {
+                <tr>
+                    <th scope="row">
+                        <a asp-action="Details" asp-route-id="@quote.Id">@quote.QuoteNumber</a>
+                        <div class="small text-body-secondary">第@(quote.RevisionNumber)版</div>
+                    </th>
+                    <td>@quote.PartyName</td>
+                    <td>@quote.SiteName</td>
+                    <td>
+                        <span class="badge text-bg-primary">@UiDisplayText.ForQuoteStatus(quote.Status)</span>
+                        <div class="small text-body-secondary">@UiDisplayText.ForQuoteStatusDescription(quote.Status)</div>
+                    </td>
+                    <td>@FormatAmount(quote.TotalAmount)</td>
+                    <td>@FormatDate(quote.ValidUntil)</td>
+                    <td>@quote.OwnerName</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <div class="row g-3 d-xl-none">
+    @foreach (var quote in Model.Items)
+    {
+        <div class="col-12 col-md-6">
+            <article class="card task-card h-100">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                        <span>
+                            <span class="badge text-bg-primary">@UiDisplayText.ForQuoteStatus(quote.Status)</span>
+                            <span class="d-block small text-body-secondary">@UiDisplayText.ForQuoteStatusDescription(quote.Status)</span>
+                        </span>
+                        <span class="text-body-secondary">@FormatDate(quote.ValidUntil)</span>
+                    </div>
+                    <h2 class="h5 card-title">@quote.QuoteNumber<span class="small text-body-secondary"> （第@(quote.RevisionNumber)版）</span></h2>
+                    <p class="mb-1">顧客: @quote.PartyName</p>
+                    <p class="mb-1">現場: @quote.SiteName</p>
+                    <p class="mb-1">営業担当者: @quote.OwnerName</p>
+                    <p class="mb-3">合計金額: @FormatAmount(quote.TotalAmount)</p>
+                    <a class="btn btn-outline-primary" asp-action="Details" asp-route-id="@quote.Id">詳しく見る</a>
+                </div>
+            </article>
+        </div>
+    }
+    </div>
+}
+
+<nav aria-label="見積のページ" class="d-flex flex-wrap align-items-center gap-2 mt-3">
+    <span class="text-body-secondary">全@(Model.TotalCount)件</span>
+    <ul class="pagination mb-0">
+        @for (int pageNumber = 1; pageNumber <= Model.TotalPages; pageNumber++)
+        {
+            <li class="page-item @(pageNumber == Model.Page ? "active" : null)">
+                <a class="page-link" href="@Url.Action("Index", new { branchId = Model.Filters.BranchId, ownerUserId = Model.Filters.OwnerUserId, status = Model.Filters.Status, validUntilFrom = Model.Filters.ValidUntilFrom?.ToString("yyyy-MM-dd"), validUntilTo = Model.Filters.ValidUntilTo?.ToString("yyyy-MM-dd"), search = Model.Filters.Search, page = pageNumber, pageSize = Model.PageSize })">@pageNumber</a>
+            </li>
+        }
+    </ul>
+</nav>
+
+@functions {
+    private static readonly System.Globalization.CultureInfo JapaneseCulture = System.Globalization.CultureInfo.GetCultureInfo("ja-JP");
+
+    private static string FormatAmount(decimal? amount) =>
+        amount?.ToString("C0", JapaneseCulture) ?? "未入力";
+
+    private static string FormatDate(DateTime? date) =>
+        date?.ToString("yyyy年M月d日", JapaneseCulture) ?? "未入力";
+}

@@ -114,6 +114,7 @@ public sealed class DemoResetConcurrencyTests(PostgresFixture fixture) : IAsyncL
         FieldOpsDbContext dbContext = assertScope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
         Assert.Equal(2, await dbContext.DemoResetExecutions.CountAsync());
         Assert.Equal(DemoDataManifest.BranchCount, await dbContext.Branches.CountAsync());
+        Assert.Equal(DemoDataManifest.QuoteCount, await dbContext.Quotes.CountAsync());
         Assert.Equal(DemoDataManifest.WorkEventCount, await dbContext.Set<FieldOps.Domain.Entities.WorkEvent>().CountAsync());
         Assert.True(await dbContext.Parties.AnyAsync(item => item.Id == DemoDataManifest.PartyId(1)));
     }

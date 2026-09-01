@@ -1,5 +1,6 @@
 using FieldOps.E2ETests.Infrastructure;
 using FieldOps.E2ETests.Pages;
+using FieldOps.Infrastructure.Demo;
 using FieldOps.Infrastructure.Identity;
 
 using Microsoft.Playwright;
@@ -19,18 +20,18 @@ public sealed class SystemAdministratorTests(FieldOpsWebFixture fixture)
             await dashboard.ExpectFirstTodayActionAsync("全体の遅延");
             string openOpportunities = await dashboard.Metric("open-opportunities").GetAttributeAsync("data-value") ?? string.Empty;
             await page.Locator("[data-nav='customers']").ClickAsync();
-            await new PartyPage(page).EditAsync("架空設備サービス 01", "架空設備サービス 01 E2E");
+            await new PartyPage(page).EditAsync("架空設備サービス 001", "架空設備サービス 001 E2E");
             Assert.Equal(1, await fixture.QueryScalarAsync<int>(
                 "SELECT count(*) FROM \"AuditEntries\" WHERE \"AggregateId\" = '10000000-0000-4000-8000-000000000001' AND \"Action\" = 'Updated'"));
             await page.Locator("[data-nav='audit']").ClickAsync();
             await Assertions.Expect(page.GetByText("更新", new() { Exact = true }).First).ToBeVisibleAsync();
             await Assertions.Expect(page.Locator("[data-audit-action='Updated']").First).ToBeVisibleAsync();
             await new ResetPage(page).ExecuteOnceAsync();
-            Assert.Equal(40, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"Parties\""));
-            Assert.Equal(30, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"SalesOpportunities\""));
-            Assert.Equal(80, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"WorkOrders\""));
-            Assert.Equal(250, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"WorkEvents\""));
-            Assert.Equal("架空設備サービス 01", await fixture.QueryScalarAsync<string>(
+            Assert.Equal(DemoDataManifest.PartyCount, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"Parties\""));
+            Assert.Equal(DemoDataManifest.SalesOpportunityCount, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"SalesOpportunities\""));
+            Assert.Equal(DemoDataManifest.WorkOrderCount, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"WorkOrders\""));
+            Assert.Equal(DemoDataManifest.WorkEventCount, await fixture.QueryScalarAsync<int>("SELECT count(*) FROM \"WorkEvents\""));
+            Assert.Equal("架空設備サービス 001", await fixture.QueryScalarAsync<string>(
                 "SELECT \"OrganizationName\" FROM \"Parties\" WHERE \"Id\" = '10000000-0000-4000-8000-000000000001'"));
             Assert.Equal(openOpportunities, await dashboard.Metric("open-opportunities").GetAttributeAsync("data-value"));
             Assert.Equal(1, await fixture.QueryScalarAsync<int>(

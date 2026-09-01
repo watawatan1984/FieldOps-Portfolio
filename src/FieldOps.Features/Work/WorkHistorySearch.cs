@@ -158,8 +158,12 @@ public sealed class WorkHistorySearch(
             })
             .ToListAsync(cancellationToken);
 
+        // Tenant-wide lookup (branchId: null): a technician may be assigned to a work order outside
+        // their current home branch, and display must still resolve their name in that case. Role
+        // membership is still required, so a technician whose role has been revoked still falls back
+        // to "未登録の担当者" below.
         IReadOnlyList<FieldOpsUserOption> technicians = await userDirectory.GetUsersInRoleAsync(
-            criteria.BranchId,
+            null,
             FieldTechnicianRole,
             cancellationToken);
         Dictionary<string, string> technicianNames = technicians.ToDictionary(user => user.Id, user => user.DisplayName);

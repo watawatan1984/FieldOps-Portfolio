@@ -114,15 +114,17 @@ public sealed class SalesQueries(
         Guid? ownerBranchId = request.BranchId == Guid.Empty ? null : request.BranchId;
         IReadOnlyList<FieldOpsUserOption> owners = await userDirectory.GetUsersInRoleAsync(
             ownerBranchId, SalesRepresentativeRole, cancellationToken);
-        Dictionary<string, string> ownerNames = owners.ToDictionary(owner => owner.Id, owner => owner.DisplayName);
+        IReadOnlyDictionary<string, string> ownerDisplayNames = await userDirectory.GetDisplayNamesAsync(
+            rows.Select(row => row.OwnerUserId).OfType<string>().Distinct(StringComparer.Ordinal),
+            cancellationToken);
         List<SalesListItem> items = rows.Select(row => new SalesListItem(
             row.Id,
             row.PartyName,
             row.SiteName,
             row.BranchName,
-            row.OwnerUserId is not null && ownerNames.TryGetValue(row.OwnerUserId, out string? ownerName)
+            row.OwnerUserId is not null && ownerDisplayNames.TryGetValue(row.OwnerUserId, out string? ownerName)
                 ? ownerName
-                : row.OwnerUserId ?? "未割当",
+                : "未割当",
             row.Status,
             row.ProposedAmount,
             row.ExpectedCloseDate,
@@ -211,13 +213,16 @@ public sealed class SalesQueries(
             .Select(party => party.OrganizationName ?? party.LastName + ", " + party.FirstName).SingleAsync(cancellationToken);
         string siteName = await dbContext.Parties.AsNoTracking().SelectMany(party => party.Sites)
             .Where(site => site.Id == opportunity.SiteId).Select(site => site.Name).SingleAsync(cancellationToken);
-        IReadOnlyList<FieldOpsUserOption> owners = await userDirectory.GetUsersInRoleAsync(opportunity.BranchId, SalesRepresentativeRole, cancellationToken);
-        IReadOnlyList<FieldOpsUserOption> technicians = await userDirectory.GetUsersInRoleAsync(opportunity.BranchId, FieldTechnicianRole, cancellationToken);
-        string ownerName = owners.FirstOrDefault(owner => owner.Id == opportunity.OwnerUserId)?.DisplayName
-            ?? opportunity.OwnerUserId ?? "未割当";
+        List<string> involvedUserIds = [];
+        if (opportunity.OwnerUserId is not null) involvedUserIds.Add(opportunity.OwnerUserId);
+        if (opportunity.AssignedUserId is not null) involvedUserIds.Add(opportunity.AssignedUserId);
+        IReadOnlyDictionary<string, string> userDisplayNames = await userDirectory.GetDisplayNamesAsync(involvedUserIds, cancellationToken);
+        string ownerName = opportunity.OwnerUserId is not null && userDisplayNames.TryGetValue(opportunity.OwnerUserId, out string? resolvedOwnerName)
+            ? resolvedOwnerName
+            : "未割当";
         string? assignedName = opportunity.AssignedUserId is null
             ? null
-            : technicians.FirstOrDefault(user => user.Id == opportunity.AssignedUserId)?.DisplayName ?? opportunity.AssignedUserId;
+            : userDisplayNames.GetValueOrDefault(opportunity.AssignedUserId, "未割当");
         IReadOnlyList<SalesAuditSummary> audit = canViewAudit
             ? await dbContext.AuditEntries.AsNoTracking()
                 .Where(entry => entry.AggregateType == nameof(SalesOpportunity) && entry.AggregateId == id)

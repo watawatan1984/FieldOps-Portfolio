@@ -111,11 +111,11 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
             await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "作業予定", Exact = true }))
                 .ToBeVisibleAsync();
 
-            ILocator workOrderCard = page.GetByRole(AriaRole.Link, new() { Name = "架空設備サービス 02", Exact = true }).First;
+            ILocator workOrderCard = page.GetByRole(AriaRole.Link, new() { Name = "架空設備サービス 002", Exact = true }).First;
             await PressTabUntilFocusedAsync(page, workOrderCard, "work order card");
             await AssertFocusedElementHasVisibleOutlineAsync(page, "work order card");
             await page.Keyboard.PressAsync("Enter");
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "架空設備サービス 02", Exact = true }))
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "架空設備サービス 002", Exact = true }))
                 .ToBeVisibleAsync();
 
             ILocator addEventLink = page.GetByRole(AriaRole.Link, new() { Name = "作業記録を追加する", Exact = true });
@@ -135,7 +135,7 @@ public sealed class ResponsiveUsabilityTests(FieldOpsWebFixture fixture)
 
             await PressShiftTabUntilFocusedAsync(page, backLink, "work event back link");
             await page.Keyboard.PressAsync("Enter");
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "架空設備サービス 02", Exact = true }))
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "架空設備サービス 002", Exact = true }))
                 .ToBeVisibleAsync();
             ILocator transitionButton = page.GetByRole(AriaRole.Button, new() { Name = "作業を開始する", Exact = true });
             await PressTabUntilFocusedAsync(page, transitionButton, "start work transition button");

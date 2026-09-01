@@ -85,7 +85,9 @@ public static class AuditFieldContract
         "ExpectedCloseDate",
         "IsBusinessPartner",
         "IsCustomer",
+        "LineItems",
         "NextStatus",
+        "Notes",
         "OccurredAtUtc",
         "OrganizationName",
         "OwnerUserId",
@@ -98,7 +100,9 @@ public static class AuditFieldContract
         "SiteName",
         "Status",
         "Summary",
-        "TargetBranchId"
+        "TargetBranchId",
+        "TaxRatePercent",
+        "ValidUntil"
     };
 
     public static string NormalizeForStorage(IEnumerable<string> changedFields)

@@ -79,6 +79,11 @@
     </form>
 }
 
+@if ((Model.Status == SalesOpportunityStatus.Quoting || Model.Status == SalesOpportunityStatus.Proposed) && Model.CanManage)
+{
+    <p class="mb-3"><a class="btn btn-success" asp-controller="Quotes" asp-action="CreateFromOpportunity" asp-route-salesOpportunityId="@Model.Id">見積を作成する</a></p>
+}
+
 @if (Model.CanViewAudit)
 {
     <details class="details-disclosure mt-4">
