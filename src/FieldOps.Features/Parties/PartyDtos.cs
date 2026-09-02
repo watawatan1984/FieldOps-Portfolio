@@ -29,7 +29,8 @@ public sealed record PartyListItem(
     bool IsBusinessPartner,
     string? PrimaryContact,
     string? PrimarySite,
-    uint Version);
+    uint Version,
+    Guid BranchId);
 
 public sealed record PartyIndexViewModel(
     Guid BranchId,
@@ -39,7 +40,9 @@ public sealed record PartyIndexViewModel(
     int Page,
     int PageSize,
     int TotalCount,
-    IReadOnlyList<PartyListItem> Items)
+    IReadOnlyList<PartyListItem> Items,
+    IReadOnlyList<BranchOption> Branches,
+    bool CanSelectBranch)
 {
     public int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize));
 }

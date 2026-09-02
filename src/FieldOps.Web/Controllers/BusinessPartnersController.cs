@@ -21,7 +21,7 @@ public sealed class BusinessPartnersController(
         [FromQuery] PartySearchRequest request,
         CancellationToken cancellationToken)
     {
-        if (request.BranchId == Guid.Empty)
+        if (request.BranchId == Guid.Empty && !User.IsInRole(DemoRoleNames.SystemAdministrator))
         {
             Guid branchId = Guid.TryParse(
                 User.FindFirstValue(DemoUserClaimsPrincipalFactory.BranchIdClaimType),
@@ -37,19 +37,22 @@ public sealed class BusinessPartnersController(
             });
         }
 
-        ResourceAuthorizationOutcome outcome = await resourceAuthorizer.AuthorizeBranchAsync(
-            User,
-            request.BranchId,
-            BranchResourceAction.ManageParties,
-            cancellationToken);
-        if (outcome is ResourceAuthorizationOutcome.NotFound)
+        if (request.BranchId != Guid.Empty)
         {
-            return NotFound();
-        }
+            ResourceAuthorizationOutcome outcome = await resourceAuthorizer.AuthorizeBranchAsync(
+                User,
+                request.BranchId,
+                BranchResourceAction.ManageParties,
+                cancellationToken);
+            if (outcome is ResourceAuthorizationOutcome.NotFound)
+            {
+                return NotFound();
+            }
 
-        if (outcome is not ResourceAuthorizationOutcome.Allowed)
-        {
-            return Forbid();
+            if (outcome is not ResourceAuthorizationOutcome.Allowed)
+            {
+                return Forbid();
+            }
         }
 
         try

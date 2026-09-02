@@ -491,7 +491,6 @@ public sealed class DashboardTests(PostgresFixture postgres)
 
         foreach (string role in new[]
         {
-            DemoRoleNames.SystemAdministrator,
             DemoRoleNames.BranchManager,
             DemoRoleNames.SalesRepresentative
         })
@@ -514,6 +513,29 @@ public sealed class DashboardTests(PostgresFixture postgres)
             Assert.Contains("架空中央支店 協力会社", decodedPartnerHtml, StringComparison.Ordinal);
             Assert.DoesNotContain("架空現場支店 協力会社", decodedPartnerHtml, StringComparison.Ordinal);
         }
+
+        // A System Administrator's "customers"/"business-partners" nav links no longer redirect into a
+        // single home branch: they land directly on the all-branches view, so both seeded branches'
+        // parties must appear together in the one response (unlike the branch-scoped roles above).
+        using HttpClient administrator = CreateClient(application);
+        await LoginAsAsync(administrator, DemoRoleNames.SystemAdministrator);
+        string administratorDashboard = await administrator.GetStringAsync("/");
+
+        string administratorCustomerHref = ExtractNavigationHref(administratorDashboard, "customers");
+        (HttpStatusCode administratorCustomerStatus, string administratorCustomerHtml) =
+            await GetFinalResponseAsync(administrator, administratorCustomerHref);
+        string decodedAdministratorCustomerHtml = WebUtility.HtmlDecode(administratorCustomerHtml);
+        Assert.Equal(HttpStatusCode.OK, administratorCustomerStatus);
+        Assert.Contains("架空中央支店 顧客", decodedAdministratorCustomerHtml, StringComparison.Ordinal);
+        Assert.Contains("架空現場支店 顧客", decodedAdministratorCustomerHtml, StringComparison.Ordinal);
+
+        string administratorPartnerHref = ExtractNavigationHref(administratorDashboard, "business-partners");
+        (HttpStatusCode administratorPartnerStatus, string administratorPartnerHtml) =
+            await GetFinalResponseAsync(administrator, administratorPartnerHref);
+        string decodedAdministratorPartnerHtml = WebUtility.HtmlDecode(administratorPartnerHtml);
+        Assert.Equal(HttpStatusCode.OK, administratorPartnerStatus);
+        Assert.Contains("架空中央支店 協力会社", decodedAdministratorPartnerHtml, StringComparison.Ordinal);
+        Assert.Contains("架空現場支店 協力会社", decodedAdministratorPartnerHtml, StringComparison.Ordinal);
 
         using HttpClient technician = CreateClient(application);
         await LoginAsAsync(technician, DemoRoleNames.FieldTechnician);

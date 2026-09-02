@@ -20,11 +20,30 @@
         <p class="page-intro mb-1">この画面では協力会社を探し、詳しい情報を確認できます。</p>
         <p class="text-body-secondary mb-0">担当支店: <strong>@Model.BranchName</strong></p>
     </div>
-    <a class="btn btn-primary" asp-controller="Parties" asp-action="Create" asp-route-branchId="@Model.BranchId" asp-route-role="@PartyRoleType.BusinessPartner">新しい協力会社を登録する</a>
+    @if (Model.BranchId != Guid.Empty)
+    {
+        <a class="btn btn-primary" asp-controller="Parties" asp-action="Create" asp-route-branchId="@Model.BranchId" asp-route-role="@PartyRoleType.BusinessPartner">新しい協力会社を登録する</a>
+    }
 </div>
 
 <form method="get" class="row g-2 mb-4" role="search">
-    <input type="hidden" name="branchId" value="@Model.BranchId" />
+    @if (Model.CanSelectBranch)
+    {
+        <div class="col-md-4">
+            <label for="branch-filter" class="form-label">支店</label>
+            <select id="branch-filter" class="form-select" name="branchId">
+                <option value="">すべての支店</option>
+                @foreach (var branch in Model.Branches)
+                {
+                    <option value="@branch.Id" selected="@(branch.Id == Model.BranchId)">@branch.Name</option>
+                }
+            </select>
+        </div>
+    }
+    else
+    {
+        <input type="hidden" name="branchId" value="@Model.BranchId" />
+    }
     <div class="col-md-8">
         <label class="form-label" for="partner-search">会社名・担当者名・現場名で検索</label>
         <input class="form-control" id="partner-search" name="search" value="@Model.Search" />
@@ -54,7 +73,7 @@ else
             @foreach (var party in Model.Items)
             {
                 <tr>
-                    <th scope="row"><a asp-controller="Parties" asp-action="Details" asp-route-id="@party.Id" asp-route-branchId="@Model.BranchId">@party.DisplayName</a></th>
+                    <th scope="row"><a asp-controller="Parties" asp-action="Details" asp-route-id="@party.Id" asp-route-branchId="@party.BranchId">@party.DisplayName</a></th>
                     <td><span class="badge text-bg-secondary">@UiDisplayText.ForPartyRole(PartyRoleType.BusinessPartner)</span></td>
                     <td>@(party.PrimaryContact ?? "未登録")</td>
                     <td>@(party.PrimarySite ?? "未登録")</td>
@@ -73,7 +92,7 @@ else
                     <p class="mb-2"><span class="badge text-bg-secondary">@UiDisplayText.ForPartyRole(PartyRoleType.BusinessPartner)</span></p>
                     <p class="mb-1">担当者: @(party.PrimaryContact ?? "未登録")</p>
                     <p class="mb-3">現場: @(party.PrimarySite ?? "未登録")</p>
-                    <a class="btn btn-outline-primary" asp-controller="Parties" asp-action="Details" asp-route-id="@party.Id" asp-route-branchId="@Model.BranchId">協力会社の情報を見る</a>
+                    <a class="btn btn-outline-primary" asp-controller="Parties" asp-action="Details" asp-route-id="@party.Id" asp-route-branchId="@party.BranchId">協力会社の情報を見る</a>
                 </div>
             </article>
         </div>

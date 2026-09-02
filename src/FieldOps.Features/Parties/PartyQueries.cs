@@ -10,8 +10,9 @@ public sealed class PartyPageOutOfRangeException : Exception
     public PartyPageOutOfRangeException() : base("The page is outside the supported range.") { }
 }
 
-public sealed class PartyQueries(IFieldOpsDbContext dbContext)
+public sealed class PartyQueries(IFieldOpsDbContext dbContext, ICurrentUser currentUser)
 {
+    private const string SystemAdministratorRole = "System Administrator";
     public const int DefaultPageSize = 25;
     public const int MaximumPageSize = 100;
 
@@ -29,12 +30,20 @@ public sealed class PartyQueries(IFieldOpsDbContext dbContext)
             throw new PartyPageOutOfRangeException();
         }
 
+        bool canSelectBranch = currentUser.Role == SystemAdministratorRole;
+        if (request.BranchId == Guid.Empty && !canSelectBranch)
+        {
+            throw new UnauthorizedAccessException("A branch scope is required.");
+        }
+
         string search = request.Search?.Trim() ?? string.Empty;
         string normalizedSearch = search.ToUpperInvariant();
 
-        IQueryable<FieldOps.Domain.Entities.Party> parties = dbContext.Parties
-            .AsNoTracking()
-            .Where(party => party.BranchAssignments.Any(assignment => assignment.BranchId == request.BranchId));
+        IQueryable<FieldOps.Domain.Entities.Party> parties = dbContext.Parties.AsNoTracking();
+        if (request.BranchId != Guid.Empty)
+        {
+            parties = parties.Where(party => party.BranchAssignments.Any(assignment => assignment.BranchId == request.BranchId));
+        }
 
         if (request.Role is PartyRoleType role)
         {
@@ -49,7 +58,7 @@ public sealed class PartyQueries(IFieldOpsDbContext dbContext)
                     (contact.FirstName + " " + contact.LastName).ToUpper().Contains(normalizedSearch) ||
                     (contact.LastName + " " + contact.FirstName).ToUpper().Contains(normalizedSearch)) ||
                 party.Sites.Any(site =>
-                    site.BranchId == request.BranchId &&
+                    (request.BranchId == Guid.Empty || site.BranchId == request.BranchId) &&
                     site.Name.ToUpper().Contains(normalizedSearch)));
         }
 
@@ -70,18 +79,22 @@ public sealed class PartyQueries(IFieldOpsDbContext dbContext)
                     .Select(contact => contact.FirstName + " " + contact.LastName)
                     .FirstOrDefault(),
                 party.Sites
-                    .Where(site => site.BranchId == request.BranchId)
+                    .Where(site => request.BranchId == Guid.Empty || site.BranchId == request.BranchId)
                     .OrderBy(site => site.Name)
                     .Select(site => site.Name)
                     .FirstOrDefault(),
-                party.Version))
+                party.Version,
+                request.BranchId != Guid.Empty
+                    ? request.BranchId
+                    : party.BranchAssignments.OrderBy(assignment => assignment.BranchId).Select(assignment => assignment.BranchId).First()))
             .ToListAsync(cancellationToken);
 
-        string branchName = await dbContext.Branches
-            .AsNoTracking()
-            .Where(branch => branch.Id == request.BranchId)
-            .Select(branch => branch.Name)
-            .SingleAsync(cancellationToken);
+        string branchName = request.BranchId == Guid.Empty
+            ? "全支店"
+            : await GetBranchNameAsync(request.BranchId, cancellationToken);
+        IReadOnlyList<BranchOption> branches = canSelectBranch
+            ? await GetBranchOptionsAsync(cancellationToken)
+            : [];
 
         return new PartyIndexViewModel(
             request.BranchId,
@@ -91,7 +104,9 @@ public sealed class PartyQueries(IFieldOpsDbContext dbContext)
             page,
             pageSize,
             totalCount,
-            items);
+            items,
+            branches,
+            canSelectBranch);
     }
 
     public Task<string> GetBranchNameAsync(Guid branchId, CancellationToken cancellationToken = default) =>

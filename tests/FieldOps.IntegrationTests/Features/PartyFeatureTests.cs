@@ -341,6 +341,77 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task AdministratorSeesPartiesAcrossBranchesOnCustomersIndexWhileBranchManagerStaysScoped()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        const string managerBranchPartyName = "Fictional Cross Branch Manager Customer";
+        const string otherBranchPartyName = "Fictional Cross Branch Other Customer";
+        Guid managerBranchId = await SeedCustomersInManagerAndOtherBranchAsync(
+            application, managerBranchPartyName, otherBranchPartyName);
+        using HttpClient administratorClient = CreateClient(application);
+        using HttpClient managerClient = CreateClient(application);
+        await LoginAsAsync(administratorClient, DemoRoleNames.SystemAdministrator);
+        await LoginAsAsync(managerClient, DemoRoleNames.BranchManager);
+
+        using HttpResponseMessage administratorResponse = await administratorClient.GetAsync("/customers?pageSize=500");
+        string administratorHtml = await administratorResponse.Content.ReadAsStringAsync();
+        string decodedAdministratorHtml = WebUtility.HtmlDecode(administratorHtml);
+
+        Assert.Equal(HttpStatusCode.OK, administratorResponse.StatusCode);
+        Assert.Contains("全支店", decodedAdministratorHtml);
+        Assert.Contains("id=\"branch-filter\"", administratorHtml);
+        Assert.Contains(managerBranchPartyName, administratorHtml);
+        Assert.Contains(otherBranchPartyName, administratorHtml);
+        MatchCollection administratorPartyLinks = Regex.Matches(
+            administratorHtml,
+            "href=\"/parties/[0-9a-f-]+\\?branchId=([0-9a-f-]+)\"");
+        Assert.NotEmpty(administratorPartyLinks);
+        Assert.All(administratorPartyLinks, match => Assert.NotEqual(Guid.Empty.ToString(), match.Groups[1].Value));
+        Assert.DoesNotContain("新しい顧客を登録する", administratorHtml);
+
+        using HttpResponseMessage managerRedirect = await managerClient.GetAsync("/customers");
+        Assert.Equal(HttpStatusCode.Redirect, managerRedirect.StatusCode);
+        Assert.Contains($"branchId={managerBranchId}", managerRedirect.Headers.Location?.OriginalString);
+
+        using HttpResponseMessage managerResponse = await managerClient.GetAsync(
+            $"/customers?branchId={managerBranchId}&pageSize=500");
+        string managerHtml = await managerResponse.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, managerResponse.StatusCode);
+        Assert.DoesNotContain("id=\"branch-filter\"", managerHtml);
+        Assert.Contains(managerBranchPartyName, managerHtml);
+        Assert.DoesNotContain(otherBranchPartyName, managerHtml);
+    }
+
+    [Fact]
+    public async Task AdministratorSeesPartiesAcrossBranchesOnBusinessPartnersIndex()
+    {
+        string connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using FieldOpsWebApplicationFactory application = new(connectionString);
+        const string managerBranchPartyName = "Fictional Cross Branch Manager Partner";
+        const string otherBranchPartyName = "Fictional Cross Branch Other Partner";
+        await SeedBusinessPartnersInManagerAndOtherBranchAsync(
+            application, managerBranchPartyName, otherBranchPartyName);
+        using HttpClient administratorClient = CreateClient(application);
+        await LoginAsAsync(administratorClient, DemoRoleNames.SystemAdministrator);
+
+        using HttpResponseMessage response = await administratorClient.GetAsync("/business-partners?pageSize=500");
+        string html = await response.Content.ReadAsStringAsync();
+        string decodedHtml = WebUtility.HtmlDecode(html);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("全支店", decodedHtml);
+        Assert.Contains("id=\"branch-filter\"", html);
+        Assert.Contains(managerBranchPartyName, html);
+        Assert.Contains(otherBranchPartyName, html);
+        MatchCollection partyLinks = Regex.Matches(html, "href=\"/parties/[0-9a-f-]+\\?branchId=([0-9a-f-]+)\"");
+        Assert.NotEmpty(partyLinks);
+        Assert.All(partyLinks, match => Assert.NotEqual(Guid.Empty.ToString(), match.Groups[1].Value));
+        Assert.DoesNotContain("新しい協力会社を登録する", html);
+    }
+
+    [Fact]
     public async Task CreatePersistsPartyContactSiteAndOneRedactedSuccessAudit()
     {
         string connectionString = await postgres.CreateEmptyDatabaseAsync();
@@ -748,6 +819,55 @@ public sealed class PartyFeatureTests(PostgresFixture postgres)
         dbContext.Parties.AddRange(alpha, bravo, dual);
         await dbContext.SaveChangesAsync();
         return branchId;
+    }
+
+    private static async Task<Guid> SeedCustomersInManagerAndOtherBranchAsync(
+        FieldOpsWebApplicationFactory application,
+        string managerBranchPartyName,
+        string otherBranchPartyName)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        ApplicationUser manager = await dbContext.Users.SingleAsync(
+            item => item.UserName == "branch.manager@fieldops.demo");
+        Guid managerBranchId = Assert.IsType<Guid>(manager.BranchId);
+        Branch managerBranch = await dbContext.Branches.SingleAsync(item => item.Id == managerBranchId);
+        Branch otherBranch = await dbContext.Branches.FirstAsync(item => item.Id != managerBranchId);
+
+        Party inManagerBranch = Party.CreateOrganization(managerBranchPartyName);
+        inManagerBranch.AddRole(PartyRoleType.Customer);
+        inManagerBranch.AssignToBranch(managerBranch);
+        Party inOtherBranch = Party.CreateOrganization(otherBranchPartyName);
+        inOtherBranch.AddRole(PartyRoleType.Customer);
+        inOtherBranch.AssignToBranch(otherBranch);
+
+        dbContext.Parties.AddRange(inManagerBranch, inOtherBranch);
+        await dbContext.SaveChangesAsync();
+        return managerBranchId;
+    }
+
+    private static async Task SeedBusinessPartnersInManagerAndOtherBranchAsync(
+        FieldOpsWebApplicationFactory application,
+        string managerBranchPartyName,
+        string otherBranchPartyName)
+    {
+        await using AsyncServiceScope scope = application.Services.CreateAsyncScope();
+        FieldOpsDbContext dbContext = scope.ServiceProvider.GetRequiredService<FieldOpsDbContext>();
+        ApplicationUser manager = await dbContext.Users.SingleAsync(
+            item => item.UserName == "branch.manager@fieldops.demo");
+        Guid managerBranchId = Assert.IsType<Guid>(manager.BranchId);
+        Branch managerBranch = await dbContext.Branches.SingleAsync(item => item.Id == managerBranchId);
+        Branch otherBranch = await dbContext.Branches.FirstAsync(item => item.Id != managerBranchId);
+
+        Party inManagerBranch = Party.CreateOrganization(managerBranchPartyName);
+        inManagerBranch.AddRole(PartyRoleType.BusinessPartner);
+        inManagerBranch.AssignToBranch(managerBranch);
+        Party inOtherBranch = Party.CreateOrganization(otherBranchPartyName);
+        inOtherBranch.AddRole(PartyRoleType.BusinessPartner);
+        inOtherBranch.AssignToBranch(otherBranch);
+
+        dbContext.Parties.AddRange(inManagerBranch, inOtherBranch);
+        await dbContext.SaveChangesAsync();
     }
 
     private static async Task<(Guid PartyId, Guid SourceBranchId, Guid TargetBranchId, uint Version)> SeedEditablePartyAsync(
