@@ -2,7 +2,7 @@
 
 FieldOps Portalは、複数の支店で行う「顧客対応」「営業案件」「現場作業」を、1つの画面で確認できる架空の業務システムです。ITに慣れていない人でも、ログイン直後に「今日やること」から順番に確認できるよう、日本語で大きめの文字と押しやすい操作にしています。
 
-公開デモ: [https://fieldops-portfolio.onrender.com](https://fieldops-portfolio.onrender.com)
+公開デモ: [https://fieldops.by0.uk/demo-login](https://fieldops.by0.uk/demo-login)
 
 ## このデモでできること
 
@@ -38,7 +38,7 @@ FieldOps Portalは、複数の支店で行う「顧客対応」「営業案件�
 > このリポジトリは、業務システムの設計・実装・検証方法を公開するためにゼロから作成した**架空の再構成（fictional reconstruction）**です。実在する勤務先・顧客・本番システムのソースコード、データ、URL、認証情報は含みません。
 
 - Source: [github.com/watawatan1984/FieldOps-Portfolio](https://github.com/watawatan1984/FieldOps-Portfolio)
-- Live demo: [fieldops-portfolio.onrender.com](https://fieldops-portfolio.onrender.com)
+- Live demo: [fieldops.by0.uk/demo-login](https://fieldops.by0.uk/demo-login)
 - Hosting: Render Free（Frankfurt）+ Neon Free PostgreSQL（AWS EU Central 1）
 - Latest published source: [`main`](https://github.com/watawatan1984/FieldOps-Portfolio/tree/main)
 
