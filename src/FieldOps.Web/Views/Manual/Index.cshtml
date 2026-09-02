@@ -1,0 +1,198 @@
+@{
+    ViewData["Title"] = "使い方マニュアル";
+}
+
+<h1>使い方マニュアル</h1>
+<p class="page-intro">FieldOps Portalの画面ごとの使い方を、実際の画面の写真つきで説明します。ITの操作に慣れていない方でも、上から順番に読めば一通りの流れが分かるようにしています。</p>
+<p><a class="btn btn-outline-secondary" asp-controller="DemoLogin" asp-action="Index">ログイン画面に戻る</a></p>
+
+<div class="alert alert-secondary" role="note">
+    <strong>すべて架空のデータです。</strong> 会社名・氏名・支店名・現場名・作業記録は、このデモのために作成した架空の情報です。実在する勤務先・顧客・本番システムの情報は一切含まれていません。安心して操作をお試しください。
+</div>
+
+<nav aria-labelledby="manual-toc-heading" class="card task-card mb-4">
+    <div class="card-body">
+        <h2 id="manual-toc-heading" class="h5">目次</h2>
+        <ol class="mb-0">
+            <li><a href="#overview">概要とデモの前提</a></li>
+            <li><a href="#roles">4つの役割と権限</a></li>
+            <li><a href="#login">ログイン</a></li>
+            <li><a href="#dashboard">ホーム画面の見方</a></li>
+            <li><a href="#parties">顧客と協力会社</a></li>
+            <li><a href="#sales">営業案件</a></li>
+            <li><a href="#quotes">見積（作成・明細・改訂・発行・PDF出力）</a></li>
+            <li><a href="#work-orders">作業予定</a></li>
+            <li><a href="#work-history">作業履歴</a></li>
+            <li><a href="#audit">変更履歴</a></li>
+            <li><a href="#branches">支店状況</a></li>
+            <li><a href="#reset">デモ初期化</a></li>
+        </ol>
+    </div>
+</nav>
+
+<section id="overview" aria-labelledby="overview-heading" class="mb-5">
+    <h2 id="overview-heading">1. 概要とデモの前提</h2>
+    <p>FieldOps Portalは、複数の支店で行う「顧客対応」「営業案件」「現場作業」を、1つの画面で確認できる業務システムです。ログイン直後に表示されるホーム画面から、今日やることを順番に確認できるように作られています。</p>
+    <ul>
+        <li>画面の文字は大きめにしてあり、ボタンは指でも押しやすい大きさにしています。</li>
+        <li>パソコンとタブレットでの利用を想定しています。</li>
+        <li>このデモには4つの役割があり、役割によって見える画面と操作できる範囲が異なります（次の章で説明します）。</li>
+        <li>操作を試したあとにデータを元に戻したいときは、「デモ初期化」（本マニュアルの最後の章）を使ってください。</li>
+    </ul>
+</section>
+
+<section id="roles" aria-labelledby="roles-heading" class="mb-5">
+    <h2 id="roles-heading">2. 4つの役割と権限</h2>
+    <p>デモにログインするときは、4つの役割から1つを選びます。役割ごとに、見える画面と操作できる範囲が決まっています。</p>
+    <div class="responsive-records">
+        <table class="table align-middle bg-white">
+            <thead>
+                <tr>
+                    <th scope="col">役割</th>
+                    <th scope="col">主にできること</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <th scope="row">システム管理者</th>
+                    <td>すべての支店の情報を見られます。変更履歴の確認と、デモ初期化ができるのはこの役割だけです。</td>
+                </tr>
+                <tr>
+                    <th scope="row">支店管理者</th>
+                    <td>自分の支店の顧客・協力会社・営業案件・見積・作業予定を管理できます。自分の支店の変更履歴も見られます。</td>
+                </tr>
+                <tr>
+                    <th scope="row">営業担当者</th>
+                    <td>自分の支店の顧客・協力会社の登録と、営業案件・見積のやり取りができます。</td>
+                </tr>
+                <tr>
+                    <th scope="row">現場担当者</th>
+                    <td>自分に割り当てられた作業予定の確認と、作業記録の入力が中心です。顧客の登録や見積の作成はできません。</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-body-secondary">画面上でボタンが表示されていても、操作の可否はサーバー側で必ず確認しています。担当支店の外にあるデータは、役割にかかわらず操作できません。</p>
+</section>
+
+<section id="login" aria-labelledby="login-heading" class="mb-5">
+    <h2 id="login-heading">3. ログイン</h2>
+    <p>アプリを開くと、最初に役割を選ぶ画面が表示されます。デモ専用の仕組みのため、パスワードの入力は必要ありません。</p>
+    <img src="~/images/manual/01-demo-login.png" asp-append-version="true" alt="ログイン画面のスクリーンショット。4つの役割のカードが並んでいる。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <ol>
+        <li>画面に並んだ4枚のカードから、試したい役割を選びます。</li>
+        <li>カードの中の「〜として始める」ボタンを押します。</li>
+        <li>そのままホーム画面が表示されます。</li>
+        <li>操作を終えるときは、画面右上の「終了する」ボタンを押します。</li>
+    </ol>
+    <p class="text-body-secondary">この一クリックログインは、架空データだけで動くデモ専用の機能です。通常の業務システムのようにIDやパスワードを入力する仕組みではありません。</p>
+</section>
+
+<section id="dashboard" aria-labelledby="dashboard-heading" class="mb-5">
+    <h2 id="dashboard-heading">4. ホーム画面の見方</h2>
+    <p>ログイン後に最初に表示される画面です。「今すぐ確認したいこと」が上から順に並んでいます。</p>
+    <img src="~/images/manual/02-dashboard.png" asp-append-version="true" alt="ホーム画面のスクリーンショット。今日やることのカードが並んでいる。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <ul>
+        <li><strong>今日やること</strong>：今すぐ対応したほうがよい件数がカードで表示されます。カードの「確認する」ボタンから該当の一覧に進めます。</li>
+        <li><strong>確認が必要</strong>：期限が近いなど、少し余裕はあるが確認しておきたい項目です。</li>
+        <li><strong>詳しい集計を見る</strong>：クリックすると、案件数・作業件数などの詳しい数字を開閉できます。</li>
+    </ul>
+    <p>カードの件数が0のときは「該当なし。今は追加対応はいりません。」と表示され、対応が不要なことがひと目で分かります。</p>
+</section>
+
+<section id="parties" aria-labelledby="parties-heading" class="mb-5">
+    <h2 id="parties-heading">5. 顧客と協力会社</h2>
+    <p>「顧客」は仕事を依頼してくる相手、「協力会社」は現場作業などで協力してもらう相手です。画面はそれぞれ別に分かれていますが、操作方法は同じです。</p>
+    <img src="~/images/manual/03-customers.png" asp-append-version="true" alt="顧客の一覧画面のスクリーンショット。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <img src="~/images/manual/04-business-partners.png" asp-append-version="true" alt="協力会社の一覧画面のスクリーンショット。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <ol>
+        <li>会社名・担当者名・現場名で検索できます。</li>
+        <li>一覧の名前をクリックすると、連絡先や現場などの詳しい情報を確認できます。</li>
+        <li>「新しい顧客を登録する」「新しい協力会社を登録する」ボタンから、会社名・区分（顧客／協力会社）・主な連絡先・現場名を入力して登録できます。</li>
+    </ol>
+    <p class="text-body-secondary">現場担当者の役割では、この画面は表示されません。顧客・協力会社の登録と編集は、管理者・支店管理者・営業担当者だけが行えます。</p>
+</section>
+
+<section id="sales" aria-labelledby="sales-heading" class="mb-5">
+    <h2 id="sales-heading">6. 営業案件</h2>
+    <p>顧客からの依頼を「営業案件」として登録し、状態を進めながら管理します。状態は、新規 → 連絡済み → 現地確認予定 → 見積作成中 → 提案済み → 受注／失注／保留、の順に進みます。</p>
+    <img src="~/images/manual/05-sales-list.png" asp-append-version="true" alt="営業案件の一覧画面のスクリーンショット。状態や予定日で絞り込める。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <p>一覧では、支店・検索キーワード・営業担当者・状態・予定日・提案金額の範囲で絞り込めます。案件名をクリックすると詳細画面が開きます。</p>
+    <img src="~/images/manual/06-sales-detail.png" asp-append-version="true" alt="営業案件の詳細画面のスクリーンショット。次の行動を選ぶボタンが並んでいる。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <ol>
+        <li>詳細画面の上部で、予定日・提案金額・営業担当者・現場担当者を確認できます。</li>
+        <li>「次の行動」の中から、進めたい状態のボタンを押します（確認画面が表示されてから実行されます）。</li>
+        <li>状態が「見積作成中」または「提案済み」のときは、「見積を作成する」ボタンから見積を作成できます。</li>
+        <li>状態を「受注」にすると、「この受注から作業予定を作る」ボタンが表示され、作業予定の作成に進めます。</li>
+    </ol>
+</section>
+
+<section id="quotes" aria-labelledby="quotes-heading" class="mb-5">
+    <h2 id="quotes-heading">7. 見積（作成・明細・改訂・発行・PDF出力）</h2>
+    <p>見積は、営業案件が「見積作成中」または「提案済み」のときに作成できます。1つの営業案件に対して、複数回の見積（改訂版）を作ることができます。</p>
+    <img src="~/images/manual/07-quotes-list.png" asp-append-version="true" alt="見積の一覧画面のスクリーンショット。見積番号や状態が並んでいる。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <p>見積の状態は、下書き → 発行済み → 承認／失注／期限切れ、の順に進みます。<strong>内容を編集できるのは「下書き」の間だけです。</strong>発行すると内容は確定し、その合計金額が営業案件の「提案金額」として自動的に反映されます。</p>
+    <h3 class="h5">見積を作成する</h3>
+    <img src="~/images/manual/09-quotes-create.png" asp-append-version="true" alt="見積の作成画面のスクリーンショット。明細行の入力欄が並んでいる。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <ol>
+        <li>営業担当者と有効期限を入力します。</li>
+        <li>明細に、品名・単位・数量・単価を1行ずつ入力します。「明細を追加」で行を増やし、「この行を削除」で行を減らせます。</li>
+        <li>画面下部の「金額プレビュー」に、小計・消費税・合計のおおよその金額が自動で表示されます。実際の金額は保存時にサーバーであらためて計算されます。</li>
+        <li>消費税は10%を上乗せする方式で、1円未満の端数は切り捨てて計算します。</li>
+        <li>「見積を登録する」で保存します。</li>
+    </ol>
+    <h3 class="h5">見積の詳細・発行・PDF出力</h3>
+    <img src="~/images/manual/08-quotes-detail.png" asp-append-version="true" alt="見積の詳細画面のスクリーンショット。明細と合計金額、PDF出力ボタンがある。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <ol>
+        <li>詳細画面では、明細・小計・消費税・合計金額を確認できます。</li>
+        <li>「見積書をPDFで出力」ボタンから、印刷や送付に使えるPDFをダウンロードできます。</li>
+        <li>下書きの間は「見積を編集する」から内容を修正できます。</li>
+        <li>「次の行動」から、発行・承認・失注などへ状態を進められます。発行済みにした後は内容を編集できません。修正が必要な場合は、新しい改訂版を作成します。</li>
+    </ol>
+</section>
+
+<section id="work-orders" aria-labelledby="work-orders-heading" class="mb-5">
+    <h2 id="work-orders-heading">8. 作業予定</h2>
+    <p>営業案件が受注になると、そこから作業予定を作成できます。作業予定の状態は、未設定 → 予定あり → 作業中 → 完了（または取り消し）、の順に進みます。</p>
+    <img src="~/images/manual/10-work-orders.png" asp-append-version="true" alt="作業予定の一覧画面のスクリーンショット。状態や担当者が並んでいる。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <ol>
+        <li>一覧は、支店・状態・「期限を過ぎた作業だけ」で絞り込めます。</li>
+        <li>管理者・支店管理者は、詳細画面の「日程と担当者を決める」から、担当者と予定日時を設定します。設定すると状態が「予定あり」になります。</li>
+        <li>担当の現場担当者は、詳細画面の「作業記録を追加する」から、作業の状況を記録できます。</li>
+        <li>「状態を変更する」から、作業の開始・完了・取り消しを行えます。完了した作業は、通常の作業記録の追加はできなくなりますが、「訂正記録」だけは追加できます。</li>
+    </ol>
+</section>
+
+<section id="work-history" aria-labelledby="work-history-heading" class="mb-5">
+    <h2 id="work-history-heading">9. 作業履歴</h2>
+    <p>これまでの作業記録を、条件を指定して横断的に検索できる画面です。</p>
+    <img src="~/images/manual/11-work-history.png" asp-append-version="true" alt="作業履歴の検索画面のスクリーンショット。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <p>予定日・完了日の期間、状態、キーワード（顧客名・現場名・作業記録の内容）で検索できます。「条件を追加する」を開くと、支店・顧客・協力会社・現場・記録種別・担当者でも絞り込めます。見える範囲は役割によって異なり、現場担当者は自分が関わった作業だけが対象です。</p>
+</section>
+
+<section id="audit" aria-labelledby="audit-heading" class="mb-5">
+    <h2 id="audit-heading">10. 変更履歴</h2>
+    <p>誰が・いつ・どの業務情報を変更したかを確認できる画面です。管理者はすべての支店、支店管理者は自分の支店の変更履歴を見られます。</p>
+    <img src="~/images/manual/12-audit.png" asp-append-version="true" alt="変更履歴の一覧画面のスクリーンショット。日時と操作内容が並んでいる。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <p class="text-body-secondary">画面には「いつ・何が・どう変わったか」という操作の記録だけを表示し、個人ID番号や入力内容そのものの詳しい値は表示しません。</p>
+</section>
+
+<section id="branches" aria-labelledby="branches-heading" class="mb-5">
+    <h2 id="branches-heading">11. 支店状況</h2>
+    <p>支店ごとの遅延件数をまとめて確認できる画面です。管理者は全支店の一覧、支店管理者は自分の支店の状況を直接見られます。</p>
+    <img src="~/images/manual/13-branches.png" asp-append-version="true" alt="支店状況の一覧画面のスクリーンショット。支店ごとの遅延件数が並んでいる。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <p>未対応の営業案件、提案期限、予定あり、作業中、今月の完了、といった件数を支店ごとに比較できます。支店名をクリックすると、その支店の詳しい状況に進めます。</p>
+</section>
+
+<section id="reset" aria-labelledby="reset-heading" class="mb-5">
+    <h2 id="reset-heading">12. デモ初期化</h2>
+    <p>操作を試したあとにデータが変わってしまっても、デモ初期化を行えば、あらかじめ用意された架空データにいつでも戻せます。この操作はシステム管理者だけが行えます。</p>
+    <img src="~/images/manual/14-reset.png" asp-append-version="true" alt="デモ初期化の確認画面のスクリーンショット。RESETと入力する欄がある。" class="img-fluid rounded border mb-3" width="1280" height="800" />
+    <ol>
+        <li>サイドメニューの「初期化」を開きます。</li>
+        <li>確認欄に、半角大文字で「RESET」と入力します。</li>
+        <li>「初期化を実行」ボタンを押すと、変更されたデータが承認済みの固定データへ戻ります。処理中は画面の操作ができません。</li>
+        <li>完了するとホーム画面に戻り、完了メッセージが表示されます。</li>
+    </ol>
+    <p class="text-body-secondary">初期化は誤操作を防ぐため、確認語の入力と短時間だけ有効なトークンの両方が必要です。業務データ・変更履歴・実行結果は1つの処理としてまとめて確定され、途中で失敗した場合は変更前の状態に戻ります。</p>
+</section>

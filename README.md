@@ -51,6 +51,7 @@ FieldOps Portalは、複数の支店で行う「顧客対応」「営業案件�
 - PostgreSQLトランザクション、楽観的同時実行制御、追記専用履歴
 - 相関ID、構造化ログ、ヘルスチェック、例外の安全な応答
 - 管理者だけが実行できる、排他制御されたデモデータ初期化
+- 画面写真つきの使い方マニュアルをアプリ内に用意（`/manual`、ログイン前から全ページで閲覧可能）
 
 ## デモの4ロール
 
@@ -135,8 +136,8 @@ dotnet run --project src/FieldOps.Web --launch-profile http
 | ----------------- | ------: | ------------------------------------------------------- |
 | Domain tests      |   89/89 | 不変条件、状態遷移、終端規則、GAS監視契約              |
 | Integration tests | 225/225 | 実PostgreSQL、認可、同時実行、障害、安全な初期化        |
-| Playwright E2E    |   27/27 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤      |
-| Full solution     | 341/341 | Release構成、失敗・スキップ0                            |
+| Playwright E2E    |   27/27 | 4ロール、モバイル、CSP、アクセシビリティ、証跡基盤（+1件はマニュアル用スクリーンショット再撮影ツールで既定でスキップ） |
+| Full solution     | 341/342 | Release構成、失敗0・スキップ1                           |
 | GAS monitor       |     8/8 | 10分トリガー、10:00／18:00境界、時間外アクセス停止      |
 | Baseline load     |    PASS | 20 VUs / 10分、11,843 requests、p95 31.90 ms、HTTP失敗0 |
 | Stress load       |    PASS | 100 VUs / 5分、29,548 requests、p95 39.63 ms、HTTP失敗0 |
@@ -155,7 +156,63 @@ node --test tests/gas-health-monitor.test.mjs
 
 ## Screenshots
 
-スクリーンショットは現在未掲載です。画面と権限制御は上記Live demoで直接確認できます。
+すべて架空のデモデータです。1280×800のビューポートで、System Administrator役割としてログインして撮影しました（ログイン画面のみ未ログイン状態）。アプリ内の[使い方マニュアル](src/FieldOps.Web/Views/Manual/Index.cshtml)（`/manual`）にも同じ画面写真つきの説明があります。
+
+**ログイン画面**
+
+![ログイン画面。4つの役割のカードが並んでいる。](docs/evidence/screenshots/01-demo-login.png)
+
+**ホーム画面**
+
+![ホーム画面。今日やることと確認が必要なことのカードが並んでいる。](docs/evidence/screenshots/02-dashboard.png)
+
+**顧客**
+
+![顧客の一覧画面。](docs/evidence/screenshots/03-customers.png)
+
+**協力会社**
+
+![協力会社の一覧画面。](docs/evidence/screenshots/04-business-partners.png)
+
+**営業案件（一覧）**
+
+![営業案件の一覧画面。状態や予定日で絞り込める。](docs/evidence/screenshots/05-sales-list.png)
+
+**営業案件（詳細）**
+
+![営業案件の詳細画面。次の行動を選ぶボタンが並んでいる。](docs/evidence/screenshots/06-sales-detail.png)
+
+**見積（一覧）**
+
+![見積の一覧画面。見積番号や状態が並んでいる。](docs/evidence/screenshots/07-quotes-list.png)
+
+**見積（詳細）**
+
+![見積の詳細画面。明細と合計金額、PDF出力ボタンがある。](docs/evidence/screenshots/08-quotes-detail.png)
+
+**見積（作成）**
+
+![見積の作成画面。明細行の入力欄が並んでいる。](docs/evidence/screenshots/09-quotes-create.png)
+
+**作業予定**
+
+![作業予定の一覧画面。状態や担当者が並んでいる。](docs/evidence/screenshots/10-work-orders.png)
+
+**作業履歴**
+
+![作業履歴の検索画面。](docs/evidence/screenshots/11-work-history.png)
+
+**変更履歴**
+
+![変更履歴の一覧画面。日時と操作内容が並んでいる。](docs/evidence/screenshots/12-audit.png)
+
+**支店状況**
+
+![支店状況の一覧画面。支店ごとの遅延件数が並んでいる。](docs/evidence/screenshots/13-branches.png)
+
+**デモ初期化**
+
+![デモ初期化の確認画面。RESETと入力する欄がある。](docs/evidence/screenshots/14-reset.png)
 
 ## 公開環境の制約
 
